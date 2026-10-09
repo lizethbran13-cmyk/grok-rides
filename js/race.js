@@ -119,8 +119,8 @@
     }
     if (st.cp >= r.cps.length) { st.fin = r.t; st.prog = R.total(r) + 1; if (!isAI && GR.G.me === v) onMyFinish(r); }
   }
-  function aiDrive(r, a, dt, others) {
-    const st = a.rs, P = r.P; if (st.fin != null && st.fin < r.t - 6) { a.update(dt, { brk: 1 }); return; }
+  function aiInput(r, a, st, dt, others) {
+    const P = r.P;
     const q = U.pathNearest(P.pi, a.x, a.z, st.hint < 0 ? -1 : st.hint, 40);
     const v = Math.max(0, a.vF), look = 6 + v * 0.42;
     // lane changes to pass slower cars
@@ -141,12 +141,17 @@
       const p = U.pathAt(P.pi, q.s + d), h = Math.atan2(p.dx, p.dz), k = Math.abs(U.ang(h - prevH)) / 8 + 1e-4;
       const vc = Math.sqrt(latA / k), allow = Math.sqrt(vc * vc + 2 * dec * Math.max(0, d - 8)); if (allow < vt) vt = allow; prevH = h;
     }
-    // light rubber band vs the leading human
-    const lead = Math.max(r.me.prog, ...Object.values(r.others).map((o) => o.prog || 0));
-    const gap = lead - st.prog; const rb = U.clamp(gap / 160, -1, 1) * 0.04;
-    a.pace = r.diff.pace * (1 + rb);
     const inp = { steer, thr: vt > v + 0.5 ? 1 : 0, brk: v > vt + 1.5 ? 1 : 0 };
     if (r.t < 0) { inp.thr = 0; inp.brk = 1; }
+    st.q = q; return inp;
+  }
+  function aiDrive(r, a, dt, others) {
+    const st = a.rs, P = r.P; if (st.fin != null && st.fin < r.t - 6) { a.update(dt, { brk: a.vF > 0.5 ? 1 : 0 }); return; }
+    const inp = aiInput(r, a, st, dt, others), q = st.q;
+    // light rubber band vs the leading human
+    const lead = Math.max(r.me.prog, ...Object.values(r.others).map((o) => o.prog || 0));
+    const gap = lead - st.prog; const rb = U.clamp(gap / 160, -1, 1) * 0.05;
+    a.pace = r.diff.pace * (1 + rb);
     a.update(dt, inp);
     // stuck / off-path recovery
     if (r.t > 2 && st.fin == null) {
@@ -154,6 +159,8 @@
       if (st.stuck > 2.5 || q.d > 45 || a.wet > 1) { const p = U.pathAt(P.pi, q.s + 6); a.place(p.x, p.z, Math.atan2(p.dx, p.dz)); st.stuck = 0; st.hint = -1; }
     }
   }
+  // test autopilot for the local player (same driving brain as the AI)
+  R.autoInput = function (dt) { const r = R.cur; if (!r || r.air) return null; GR.G.me.corner = 0.95; const st = r.auto || (r.auto = { hint: -1, lane: 0, laneT: 0, prog: 0 }); return aiInput(r, GR.G.me, st, dt, [GR.G.me].concat(r.ai)); };
   function onMyFinish(r) {
     const G = GR.G, me = G.me; GR.Snd.fx('win'); GR.FX.confetti(me.x, me.y + 3, me.z);
     r.myFinish = r.t; r.cleanHits = me.hits - r.hits0; r.dmgTaken = me.dmg - r.dmg0;

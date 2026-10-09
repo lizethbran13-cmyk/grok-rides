@@ -168,8 +168,11 @@
     if (G.passenger) return { label: '🚪 HOP OUT', fn: G.hopOut };
     if (GR.Race.cur) return null;
     const v = G.me;
-    if (v.dmg >= 100) return { label: '🛻 CALL A TOW (FREE)', fn: towMe };
     const air = GR.isAir(v.type), hgt = v.y - W.height(v.x, v.z);
+    if (v.dmg >= 100) {
+      const g = GR.SPOTS.find((s) => s.type === 'garage' && Math.hypot(s.x - v.x, s.z - v.z) < 12);
+      return g ? { label: '🔧 GARAGE', fn: () => UI.garage(g) } : { label: '🛻 CALL A TOW (FREE)', fn: towMe };
+    }
     if (v.speed() < 16 && (!air || hgt < 8)) {
       let best = null, bd = 10;
       for (const m of GR.SC.markers) { const d = Math.hypot(m.s.x - v.x, m.s.z - v.z); if (d < bd) { bd = d; best = m.s; } }
@@ -248,6 +251,7 @@
     const raceFrozen = GR.Race.cur && GR.Race.cur.t < 0;
     let inp = UI.isOpen() || raceFrozen ? idle : UI.readInput(v);
     if (UI.isOpen() && v.kind === 'ground') inp = { brk: Math.abs(v.vF) > 0.5 ? 0.6 : 0 };
+    if (G.autoInput && !raceFrozen) { const a = G.autoInput(v, dt); if (a) inp = a; }
     if (raceFrozen) { inp = { brk: 1 }; if (GR.isAir(v.type)) { v.vx = v.vz = v.vy = 0; } }
     if (!G.passenger) {
       const x0 = v.x, z0 = v.z;
@@ -297,6 +301,7 @@
     giveMoney: (n) => { G.save.money += n; },
     region: () => W.region(G.me.x, G.me.z),
     cam: (a) => { G.debugCam = a; },
+    sim: (sec, h) => { h = h || 1 / 30; const n = Math.round(sec / h); for (let i = 0; i < n; i++) { G.t += h; step(h); } return __gr.state(); },
     roadTp: (name, s, back) => { const r = W.roads.find((q) => q.name === name); const p = U.pathAt(r.pi, s); G.me.place(p.x, p.z, Math.atan2(p.dx, p.dz) + (back ? Math.PI : 0)); G.camSnap = true; return p; },
     state: () => ({ x: G.me.x, y: G.me.y, z: G.me.z, v: G.me.vF, type: G.me.type, dmg: G.me.dmg, money: G.save.money, air: G.me.air })
   };

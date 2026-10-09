@@ -239,7 +239,11 @@
     const rockG = U.paint(new T.DodecahedronGeometry(1.4, 0), '#9ca3af'), redRockG = U.paint(new T.DodecahedronGeometry(1.4, 0), '#c46a40');
     const L = { round: [], pine: [], snow: [], cactus: [], rock: [], red: [] };
     const r = U.rng(1234);
+    // keep race lines clear of trees and rocks (a 14 m corridor around every ground/boat race path)
+    const RC = new Set(), CS = 8;
+    GR.RACES.forEach((rc) => { if (rc.type === 'air') return; const P = GR.racePath(rc); for (let s = 0; s < P.pi.len; s += 4) { const p = U.pathAt(P.pi, s); for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) RC.add((Math.floor(p.x / CS) + dx) + ',' + (Math.floor(p.z / CS) + dz)); } });
     function ok(x, z, rad) {
+      if (RC.has(Math.floor(x / CS) + ',' + Math.floor(z / CS))) return false;
       if (Math.abs(x) > 1450 || Math.abs(z) > 1450) return false;
       if (W.roadD(x, z) < 5 + rad) return false;
       if (W.inRect(W.CITY, x, z, 12) || W.inRect(W.AIR, x, z, 50)) return false;

@@ -82,7 +82,7 @@
     { id: 'lake', name: 'Sparkle Lake Splash', icon: '🚤', type: 'circuit', laps: 2, ai: 3, ellipse: [-50, 100, 150, 100], pay: 600, vehicle: 'boat', desc: 'Boat race! A free race boat is loaned to you.' },
     { id: 'sky', name: 'Sky Rings Challenge', icon: '🛩️', type: 'air', ai: 0, pts3: [[1100, 380, 25], [950, 200, 60], [800, -50, 90], [620, -200, 120], [300, -150, 80], [20, 100, 40], [-300, -150, 100], [-620, -480, 230], [-850, -600, 290], [-500, -150, 150], [-150, 380, 60], [300, 260, 35]], pay: 900, vehicle: 'heli', desc: 'Fly through the rings against the clock. A free Grokopter is loaned if you need one.' }
   ];
-  GR.DIFF = { easy: { name: 'EASY', pace: 0.84, corner: 0.82, pay: 0.7 }, normal: { name: 'NORMAL', pace: 0.94, corner: 0.93, pay: 1 }, hard: { name: 'HARD', pace: 1.0, corner: 1.0, pay: 1.5 } };
+  GR.DIFF = { easy: { name: 'EASY', pace: 0.78, corner: 0.76, pay: 0.7 }, normal: { name: 'NORMAL', pace: 0.88, corner: 0.86, pay: 1 }, hard: { name: 'HARD', pace: 0.97, corner: 0.96, pay: 1.5 } };
 
   GR.JOBS = {
     taxi: { name: 'Taxi Fares', icon: '🚕', need: 'ground', desc: 'Pick up riders and drive them where they want to go. Any car works; a Grok Cab pays 50% more.' },
