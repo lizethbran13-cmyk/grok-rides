@@ -10,7 +10,7 @@
       o = o || {};
       this.type = type; this.V = GR.VEH[type]; this.kind = this.V.kind; this.color = color || this.V.color || '#ff4fd8';
       this.upg = o.upg || {}; this.pace = o.pace || 1; this.corner = 1; this.ai = !!o.ai; this.remote = !!o.remote;
-      this.model = M.vehicle(type, this.color, { rim: o.rim, glow: o.glow, beam: !!o.beam }); this.L = this.model.userData.L; this.Wd = this.model.userData.W;
+      this.model = M.vehicle(type, this.color, { rim: o.rim, glow: o.glow, beam: !!o.beam, rider: o.rider || (this.V.two || this.V.kart || this.V.ski ? ['#3b82f6', '#f97316', '#a855f7', '#22c55e', '#ef4444'][Math.abs(Math.round((this.color.charCodeAt(2) || 0) + (this.color.charCodeAt(4) || 0))) % 5] : null) }); this.two = !!this.V.two; this.wh = 0; this.lean = 0; this.L = this.model.userData.L; this.Wd = this.model.userData.W;
       this.boost = o.boost != null ? o.boost : 0.6; this.sp = { p: 0, r: 0, y: 0, vp: 0, vr: 0, vy: 0 }; this.driftT = 0; this.gripK = 1;
       this.x = 0; this.y = 0; this.z = 0; this.yaw = 0; this.vx = 0; this.vz = 0; this.vy = 0; this.vF = 0; this.st = 0; this.pitch = 0; this.roll = 0;
       this.dmg = o.dmg || 0; this.air = false; this.thr = 0; this.nitro = 0; this.nitroT = 1; this.lift = 0; this.alt = 0; this.wet = 0; this.hits = 0; this.onGround = true;
@@ -105,10 +105,15 @@
         let yr = -this.st * V.turn * 1.45 * sf * hs * (vF >= 0 ? 1 : -1);
         let gripAcc = grip * 40;
         // handbrake = DRIFT: the rear lets go, the car swings round, and grip comes back smoothly when you let go
-        const hb = !!(inp && inp.hand) && av > 5;
+        // two-wheelers: hold the button + GAS = WHEELIE (front lifts, a little extra pull), button alone = rear-wheel skid stop. No drifting.
+        const wantWh = !!(V.wheelie && inp && inp.hand && thr > 0 && av > 2.5);
+        this.whT = wantWh ? V.wheelie : 0;
+        if (this.two && inp && inp.hand && !wantWh && thr <= 0) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 14 * dt);
+        if (wantWh && this.wh > V.wheelie * 0.6) vF += acc * 0.08 * dt;
+        const hb = !!(inp && inp.hand) && av > 5 && !this.two;
         this.gripK += ((hb ? 0.2 : 1) - this.gripK) * Math.min(1, dt * (hb ? 9 : 2.6));
         gripAcc *= this.gripK; if (hb) { yr *= 1.55; vF -= Math.sign(vF) * Math.min(Math.abs(vF), 3.5 * dt); } else if (this.gripK < 0.9) yr *= 1.2;
-        if (inp && inp.hand && av <= 5) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 8 * dt);
+        if (inp && inp.hand && av <= 5 && !(this.two && thr > 0)) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 8 * dt);
         // lateral friction (grip limited -> slides/drifts when asking too much)
         const red = Math.min(Math.abs(vS), gripAcc * dt); vS -= Math.sign(vS) * red;
         if (hold && Math.abs(vS) < 0.8) vS = 0;
@@ -135,11 +140,11 @@
       this.side = side;
       if (this.air) {
         this.vy -= G_ * dt; this.y += this.vy * dt;
-        if (this.y <= gh) { this.sp.vy -= Math.min(5, -this.vy * 0.22); this.ev.push({ t: 'land', s: -this.vy, air: this.airT || 0 }); if (this.vy < -14) this.hit((-this.vy - 12) * 0.8, this.x, this.z, true); this.y = gh; this.vy = 0; this.air = false; this.yb = ghb; }
+        if (this.y <= gh) { this.sp.vy -= Math.min(5, -this.vy * 0.22); this.ev.push({ t: 'land', s: -this.vy, air: this.airT || 0 }); if (this.vy < (V.bigSus ? -24 : -14)) this.hit((-this.vy - (V.bigSus ? 22 : 12)) * 0.8, this.x, this.z, true); if (V.bigSus) this.susK = Math.min(1, -this.vy / 16); this.y = gh; this.vy = 0; this.air = false; this.yb = ghb; }
         this.airT = (this.airT || 0) + dt;
       } else {
         const yb = this.yb == null ? ghb : this.yb, vy = (ghb - yb) / dt;
-        if (vy < this.vy - G_ * dt * 1.5 && this.vy > 2 && Math.abs(vF) > 14) { this.air = true; this.airT = 0; this.vy = Math.min(this.vy, 16); this.y += this.vy * dt; this.ev.push({ t: 'launch' }); }
+        if (vy < this.vy - G_ * dt * 1.5 && this.vy > 2 && Math.abs(vF) > (V.two || V.kart ? 7 : 14)) { this.air = true; this.airT = 0; this.vy = Math.min(this.vy, 16); this.y += this.vy * dt; this.ev.push({ t: 'launch' }); }
         else { this.vy = U.clamp(vy, -30, 16); this.y = gh; }
         this.yb = ghb;
       }
@@ -229,7 +234,8 @@
       const cs = this.circles(); const list = W.near(this.x, this.z, this.L / 2 + 6, nearList);
       const yTop = this.y + 0.5;
       for (const c of list) {
-        if (c.top < this.y + 0.3) continue;
+        if (c.top < this.y + 0.3 || c.dead) continue;
+        const crushIt = this.V.crush && c.prop && this.speed() > 2.5;
         for (const k of cs) {
           let nx, nz, pen;
           if (c.t === 'c') { const dx = k.x - c.x, dz = k.z - c.z, d = Math.hypot(dx, dz); if (d >= c.r + k.r || d < 1e-6) continue; nx = dx / d; nz = dz / d; pen = c.r + k.r - d; }
@@ -239,6 +245,7 @@
             if (d < 1e-6) { const a = k.x - c.x0, b = c.x1 - k.x, e = k.z - c.z0, f = c.z1 - k.z, m = Math.min(a, b, e, f); nx = m === a ? -1 : m === b ? 1 : 0; nz = m === e ? -1 : m === f ? 1 : 0; pen = m + k.r; }
             else { nx = dx / d; nz = dz / d; pen = k.r - d; }
           }
+          if (crushIt) { Veh.crush(c); this.ev.push({ t: 'crush', x: c.x != null ? c.x : (c.x0 + c.x1) / 2, z: c.z != null ? c.z : (c.z0 + c.z1) / 2, tag: c.tag }); break; } // monster truck: squash it, no bump
           this.x += nx * pen; this.z += nz * pen; k.x += nx * pen; k.z += nz * pen;
           this.bounce(nx, nz, 0.25, c.tag);
         }
@@ -266,7 +273,24 @@
       if (this.kind === 'ground' || this.kind === 'boat') {
         if (!this.air) { W.normal(this.x, this.z, tmpN); const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw); const tp = Math.asin(U.clamp(-(tmpN.x * fx + tmpN.z * fz), -1, 1)), tr = Math.asin(U.clamp(-(tmpN.x * -fz + tmpN.z * fx), -1, 1)); if (this.kind === 'boat') { this.pitch = U.lerp(this.pitch, -Math.min(0.12, Math.abs(this.vF) * 0.004), Math.min(1, dt * 4)); this.roll = U.lerp(this.roll, this.st * 0.12, Math.min(1, dt * 4)); } else { this.pitch = U.lerp(this.pitch, tp, Math.min(1, dt * 10)); this.roll = U.lerp(this.roll, tr + this.st * Math.min(1, Math.abs(this.vF) / 40) * 0.05, Math.min(1, dt * 10)); } }
         else { this.pitch = U.lerp(this.pitch, -0.08, Math.min(1, dt * 2)); }
-        m.rotation.set(0, 0, 0); m.rotation.order = 'YXZ'; m.rotation.y = this.yaw; m.rotation.x = -U.clamp(this.pitch, -0.6, 0.6); m.rotation.z = U.clamp(this.roll, -0.5, 0.5);
+        let lift = 0;
+        if (this.two || this.V.ski) { // lean INTO turns (centripetal), wheelie pivots on the rear wheel; stopped bikes rest on the rider's foot
+          const yr = dt > 0 ? U.ang(this.yaw - (this._ly == null ? this.yaw : this._ly)) / dt : 0; this._ly = this.yaw;
+          const stopped = !this.air && Math.abs(this.vF) < 0.6 && this.two;
+          const tl = this.air ? this.lean * 0.9 : stopped ? -0.09 : U.clamp(-this.vF * yr * 0.055, -0.55, 0.55) * (this.V.ski ? 0.7 : 1);
+          this.lean = U.lerp(this.lean, tl, Math.min(1, dt * 7)); this.stopped = stopped;
+          this.wh = U.lerp(this.wh, this.air ? this.wh * 0.98 : (this.whT || 0), Math.min(1, dt * (this.whT ? 3 : 5)));
+          if (this.wh < 0.004) this.wh = 0;
+          const rz = (this.model.userData.wheels[1] || { position: { z: this.L * 0.4 } }).position.z;
+          lift = Math.max(0, -rz) * Math.sin(this.wh);
+          let pOff = 0;
+          if (this.V.ski) { const t = GR.G ? GR.G.t : performance.now() / 1000, sp = Math.min(1, Math.abs(this.vF) / 20); lift += Math.sin(t * 2.3 + this.x * 0.2) * (0.06 + 0.12 * sp) + Math.max(0, Math.sin(t * 4.1 + this.z * 0.3)) * 0.12 * sp; pOff = Math.sin(t * 3.1) * 0.035 * (0.4 + sp); } // bob the nose on the waves (display only, never accumulates)
+          this.roll = this.lean; this._pOff = pOff;
+        }
+        m.rotation.set(0, 0, 0); m.rotation.order = 'YXZ'; m.rotation.y = this.yaw; m.rotation.x = -U.clamp(this.pitch + (this._pOff || 0), -0.6, 0.6) - this.wh; m.rotation.z = U.clamp(this.roll, -0.6, 0.6);
+        m.position.y = this.y + lift;
+        if (m.userData.rider) M.animRider(m, this.vF, dt, inp ? (inp.park ? 0 : (inp.thr || 0)) : 0, !!this.stopped, this.wh);
+        if (this.V.bigSus) this.bigSus(dt);
         M.spinWheels(m, this.vF, dt, this.st);
         this.suspend(dt, inp);
       } else if (this.kind === 'heli') {
@@ -281,12 +305,24 @@
         if (m.userData.flame) { m.userData.flame.visible = !!this.burn; m.userData.flame.scale.y = 0.8 + Math.random() * 0.5; }
       }
     }
+    // monster truck: every wheel follows the ground under it (big articulation), wheels droop in the air and the body squashes on landing
+    bigSus(dt) {
+      const ws = this.model.userData.wheels, r = this.model.userData.wheelR, fx = Math.sin(this.yaw), fz = Math.cos(this.yaw), base = W.gy(this.x, this.z);
+      this.susK = Math.max(0, (this.susK || 0) - dt * 2.2);
+      for (const w of ws) {
+        const lx = w.position.x, lz = w.userData.z0 != null ? w.userData.z0 : (w.userData.z0 = w.position.z);
+        const wx = this.x + fz * lx + fx * lz, wz = this.z - fx * lx + fz * lz, gh = W.gy(wx, wz);
+        const plane = Math.sin(this.pitch) * lz - Math.sin(this.roll) * lx;
+        const target = this.air ? -0.45 : U.clamp(gh - base - plane, -0.55, 0.55) + this.susK * 0.3;
+        w.userData.sy = U.lerp(w.userData.sy || 0, target, Math.min(1, dt * (this.air ? 4 : 14))); w.position.y = r + w.userData.sy;
+      }
+    }
     // springy chassis: leans out in turns, dips when braking, squats on launch, squashes on landings and kerbs
     suspend(dt, inp) {
       const ch = this.model.userData.chassis; if (!ch || !(dt > 0)) return;
       const sp = this.sp, aL = U.clamp(((this.vF - (this._pv == null ? this.vF : this._pv)) / dt), -40, 40), yr = U.ang(this.yaw - (this._py == null ? this.yaw : this._py)) / dt;
       this._pv = this.vF; this._py = this.yaw;
-      const big = this.L > 7 ? 0.6 : 1, tp = this.air ? 0.04 : U.clamp(aL * 0.0045, -0.07, 0.07) * big, tr = this.air ? 0 : U.clamp(this.vF * yr * 0.0042 + (this.slip || 0) * 0.004, -0.085, 0.085) * big;
+      const big = this.L > 7 ? 0.6 : 1, tp = this.air ? 0.04 : U.clamp(aL * 0.0045, -0.07, 0.07) * big, tr = this.air || this.two ? 0 : U.clamp(this.vF * yr * 0.0042 + (this.slip || 0) * 0.004, -0.085, 0.085) * big;
       const k = 70, c = 11, h = Math.min(dt, 1 / 30);
       sp.vp += ((tp - sp.p) * k - sp.vp * c) * h; sp.p += sp.vp * h; sp.vr += ((tr - sp.r) * k - sp.vr * c) * h; sp.r += sp.vr * h;
       sp.vy += ((0 - sp.y) * 90 - sp.vy * 9) * h; sp.y = U.clamp(sp.y + sp.vy * h, -0.28, 0.25);
@@ -294,7 +330,7 @@
       const tm = this.model.userData.tailMat; if (tm) { const brk = (inp && inp.brk > 0 && this.vF > 0.5) || (this.traffic && aL < -2.5); tm.color.setScalar(brk ? 1 : (M.nightOn ? 0.85 : 0.6)); }
     }
     setRemote(s) { // apply network snapshot target
-      this.tx = s.x; this.ty = s.y; this.tz = s.z; this.tyaw = s.yaw; this.vF = s.v; this.tp = s.p || 0; this.tr = s.r || 0; this.burn = !!s.b; this.lift = 1; this.dmg = s.d || 0; this.thr = s.th || 0;
+      this.tx = s.x; this.ty = s.y; this.tz = s.z; this.tyaw = s.yaw; this.vF = s.v; this.tp = s.p || 0; this.tr = s.r || 0; this.burn = !!s.b; this.lift = 1; this.dmg = s.d || 0; this.thr = s.th || 0; this.wh = s.wh || 0; this.lean = s.ln || 0; this.tst = s.s || 0; this.tly = s.ly || 0;
       if (this.x === 0 && this.z === 0) { this.x = s.x; this.y = s.y; this.z = s.z; this.yaw = s.yaw; }
     }
     lerpRemote(dt) {
@@ -303,15 +339,23 @@
       // dead-reckon a bit along heading
       this.x += (this.tx - this.x) * k; this.y += (this.ty - this.y) * k; this.z += (this.tz - this.z) * k; this.yaw += U.ang(this.tyaw - this.yaw) * k;
       this.vx = Math.sin(this.yaw) * this.vF; this.vz = Math.cos(this.yaw) * this.vF;
-      const m = this.model; m.position.set(this.x, this.y, this.z); m.rotation.order = 'YXZ'; m.rotation.y = this.yaw; m.rotation.x = -this.tp; m.rotation.z = this.tr;
+      const m = this.model; this.ly = U.lerp(this.ly || 0, this.tly || 0, k); m.position.set(this.x, this.y + this.ly, this.z); m.rotation.order = 'YXZ'; m.rotation.y = this.yaw; m.rotation.x = -this.tp; m.rotation.z = this.tr;
+      this.st = U.lerp(this.st || 0, this.tst || 0, k); if (m.userData.rider) M.animRider(m, this.vF, dt, this.thr > 0.05 ? 1 : 0, this.two && Math.abs(this.vF) < 0.6, this.wh);
       if (m.userData.rotor) { this.rotorSpin = (this.rotorSpin || 0) + dt * 30; m.userData.rotor.rotation.y = this.rotorSpin; }
       if (m.userData.prop) m.userData.prop.rotation.z += dt * 40;
       if (m.userData.flame) m.userData.flame.visible = this.burn;
-      M.spinWheels(m, this.vF, dt, 0);
+      M.spinWheels(m, this.vF, dt, this.st || 0);
     }
-    snap() { return { x: +this.x.toFixed(2), y: +this.y.toFixed(2), z: +this.z.toFixed(2), yaw: +this.yaw.toFixed(3), v: +this.vF.toFixed(1), p: +(-this.model.rotation.x).toFixed(3), r: +this.model.rotation.z.toFixed(3), b: this.burn ? 1 : 0, d: Math.round(this.dmg), th: +(this.thr || 0).toFixed(2) }; }
+    snap() { return { x: +this.x.toFixed(2), y: +this.y.toFixed(2), z: +this.z.toFixed(2), yaw: +this.yaw.toFixed(3), v: +this.vF.toFixed(1), p: +(-this.model.rotation.x).toFixed(3), r: +this.model.rotation.z.toFixed(3), b: this.burn ? 1 : 0, d: Math.round(this.dmg), th: +(this.thr || 0).toFixed(2), wh: +(this.wh || 0).toFixed(3), ln: +(this.lean || 0).toFixed(3), s: +(this.st || 0).toFixed(2), ly: +(this.model.position.y - this.y).toFixed(2) }; }
     dispose(scene) { scene.remove(this.model); this.model.traverse((o) => { if (o.geometry && o === this.model.userData.body) o.geometry.dispose(); }); }
   }
+  // monster truck squashes a street prop: the collider goes away and the prop is flattened in place
+  Veh.crush = function (c) {
+    c.dead = true; const e = c.prop; if (!e || !e.im) return; const im = e.im, i = e.ii, m4 = new T.Matrix4(), p = new T.Vector3(), q = new T.Quaternion(), sc = new T.Vector3();
+    im.getMatrixAt(i, m4); m4.decompose(p, q, sc); if (sc.x === 0) return; sc.set(1.35, 0.14, 1.35); m4.compose(p, q, sc); im.setMatrixAt(i, m4); im.instanceMatrix.needsUpdate = true;
+    if (im.userData.orig) m4.toArray(im.userData.orig, i * 16);
+    GR.crushed = (GR.crushed || 0) + 1;
+  };
   GR.Veh = Veh;
 
   // vehicle vs vehicle (circle sets)

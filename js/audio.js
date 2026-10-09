@@ -13,8 +13,19 @@
     eng.connect(lp); lp.connect(engGain); engGain.connect(master); eng.start();
   };
   A.setMute = function (m) { A.muted = m; try { localStorage.setItem('grokRides.mute', m ? '1' : '0'); } catch (e) {} if (master) master.gain.value = m ? 0 : 0.6; };
-  A.engine = function (rpm, on, kind) {
-    if (!ctx) return; const t = ctx.currentTime;
+  // per-ride engine voices: [wave, base Hz, Hz per rpm, low-pass base, low-pass per rpm, volume]
+  const VOICE = { moped: ['square', 95, 230, 500, 1600, 0.045], sport: ['sawtooth', 85, 300, 600, 2400, 0.06], cruiser: ['sawtooth', 30, 62, 220, 420, 0.1], kart: ['square', 70, 200, 450, 1400, 0.05], jetski: ['sawtooth', 58, 150, 380, 900, 0.07], monster: ['sawtooth', 36, 85, 260, 600, 0.1] };
+  let tickT = 0, lastT = 0;
+  A.engine = function (rpm, on, kind, type, thr) {
+    if (!ctx) return; const t = ctx.currentTime, V = GR.VEH[type] || {}, vo = VOICE[V.snd];
+    if (V.snd === 'pedal') { // no motor: soft freewheel clicks while coasting, quiet tyre whirr while pedalling
+      engGain.gain.setTargetAtTime(on && rpm > 0.05 ? 0.012 : 0, t, 0.15); eng.type = 'triangle'; eng.frequency.setTargetAtTime(180 + rpm * 260, t, 0.1); lp.frequency.setTargetAtTime(900, t, 0.1);
+      const dt = Math.min(0.1, t - lastT); lastT = t; if (on && rpm > 0.08 && !(thr > 0.05)) { tickT += dt; if (tickT > 0.09 / (0.3 + rpm)) { tickT = 0; beep(2600, 0.012, 'square', 0.025); } }
+      return;
+    }
+    lastT = t;
+    if (vo) { if (eng.type !== vo[0]) eng.type = vo[0]; eng.frequency.setTargetAtTime(vo[1] + rpm * vo[2] + (V.snd === 'cruiser' ? Math.sin(t * 38) * 4 : 0), t, 0.08); lp.frequency.setTargetAtTime(vo[3] + rpm * vo[4], t, 0.1); engGain.gain.setTargetAtTime(on ? vo[5] : 0, t, 0.15); return; }
+    if (eng.type !== 'sawtooth') eng.type = 'sawtooth';
     const base = kind === 'heli' ? 38 : kind === 'balloon' ? 30 : kind === 'plane' ? 70 : 55;
     eng.frequency.setTargetAtTime(base + rpm * (kind === 'heli' ? 20 : 120), t, 0.08);
     lp.frequency.setTargetAtTime(300 + rpm * 900, t, 0.1);
@@ -45,6 +56,10 @@
       case 'ui': beep(660, 0.05, 'triangle', 0.1); break;
       case 'buy': [659, 880, 1175].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'square', 0.1), i * 90)); break;
       case 'fail': beep(330, 0.25, 'square', 0.1, 160); break;
+      case 'bell': beep(2093, 0.35, 'triangle', 0.12); setTimeout(() => beep(2093, 0.45, 'triangle', 0.1), 170); break;
+      case 'meep': beep(620, 0.12, 'square', 0.1); setTimeout(() => beep(620, 0.16, 'square', 0.1), 150); break;
+      case 'roar': beep(110, 0.6, 'sawtooth', 0.14, 70); noise(0.6, 0.3, 500); break;
+      case 'crunch': noise(0.25, 0.4, 600); beep(90, 0.2, 'square', 0.1, 50); break;
       case 'join': beep(600, 0.1, 'triangle', 0.12); setTimeout(() => beep(900, 0.12, 'triangle', 0.12), 100); break;
     }
   };

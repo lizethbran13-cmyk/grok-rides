@@ -417,5 +417,6 @@
     if (!big) { floorLamp(b, -b.W / 2 + 0.8, b.D / 2 - 1.2); b.plant(b.W / 2 - 0.8, b.D / 2 - 1.2, 0.9); }
     const mat = new T.Mesh(M.rbox(2.2, 0.04, 1.2, 0.02), b.mat(p.acc || '#22c55e')); mat.position.set(0, 0.02, b.D / 2 - 0.9); b.scene.add(mat);
   }
+  IN.deco = { picture, window3, wallShelf, pendant, floorLamp, bed, kitchen, tvSet, piano, fishTank, petBed, plantShelf, rb, bx, onWall, finish, artTex };
   IN.BUILD.gen = function (b, p) { (GEN[p.variant] || GEN.cafe)(b, p); finish(b, p); };
 })();

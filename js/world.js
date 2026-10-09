@@ -230,7 +230,7 @@
     return out;
   };
   // is a spot free of buildings (for spawning props)
-  W.blocked = function (x, z, r) { const a = W.near(x, z, r + 2); for (const c of a) { if (c.t === 'b') { if (x > c.x0 - r && x < c.x1 + r && z > c.z0 - r && z < c.z1 + r) return true; } else if (Math.hypot(x - c.x, z - c.z) < c.r + r) return true; } return false; };
+  W.blocked = function (x, z, r) { const a = W.near(x, z, r + 2); for (const c of a) { if (c.dead) continue; if (c.t === 'b') { if (x > c.x0 - r && x < c.x1 + r && z > c.z0 - r && z < c.z1 + r) return true; } else if (Math.hypot(x - c.x, z - c.z) < c.r + r) return true; } return false; };
 
   // nearest road point + heading (for resets / GPS)
   W.nearestRoad = function (x, z, skipRunway) {

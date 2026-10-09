@@ -282,6 +282,7 @@
       return { K: k, L: 3, W: 12, wr: 0, wp: [], flame: true, envColorFixed: true };
     }
   };
+  M.builders = builders; M.Kit = Kit; M.H = { box, cyl, sph, ext, plan, rbox, wheelGeo, splitCls, TIRE, RIM, GLASS, DARK, CHROME, HEAD, TAIL };
   const bodyCache = {};
   // glow textures (headlight flare, ground beam, underglow) -- shared
   function glowTex(kind) {
@@ -301,13 +302,13 @@
     const mat = M.glowMats[glow] || (M.glowMats[glow] = new T.MeshBasicMaterial({ map: tx().glow, color: gl.c, transparent: true, opacity: M.nightOn ? 0.95 : 0.5, depthWrite: false, blending: T.AdditiveBlending }));
     const m = new T.Mesh(new T.PlaneGeometry(u.W + 1.6, u.L + 1.4).rotateX(-PI / 2), mat); m.position.y = 0.07; m.renderOrder = 2; G.add(m); u.glowMesh = m;
   };
-  M.setRims = function (G, style) { const u = G.userData; if (!u.wheels || !u.wheels.length) return; const geo = wheelGeo(u.wheelR, u.wheelW, style); u.wheels.forEach((w) => { w.geometry = geo; }); u.rim = style; };
+  M.setRims = function (G, style) { const u = G.userData; if (!u.wheels || !u.wheels.length || u.bike) return; const geo = wheelGeo(u.wheelR, u.wheelW, style); u.wheels.forEach((w) => { w.geometry = geo; }); u.rim = style; };
   M.vehicle = function (type, color, opt) {
     opt = opt || {};
-    const key = type; const G = new T.Group();
+    const key = type + (M.useLow ? 'L' : ''); const G = new T.Group(); // LOW graphics builds (and caches) its own simpler geometry
     let r = bodyCache[key]; if (!r) {
       r = builders[type](); const base = r.K.build('#ffffff', r.accent);
-      const big = type === 'bus' || type === 'bigrig', car = !big && ['heli', 'plane', 'balloon', 'boat', 'snowmobile', 'buggy'].indexOf(type) < 0;
+      const big = type === 'bus' || type === 'bigrig', car = !big && !r.raw && ['heli', 'plane', 'balloon', 'boat', 'snowmobile', 'buggy'].indexOf(type) < 0;
       if (car) M.sculpt(base, r.L, r.W, { plan: 0.16, start: 0.62, tum: type === 'icecream' ? 0.05 : 0.12 });
       else if (big) M.sculpt(base, r.L, r.W, { plan: 0.05, start: 0.85, tum: 0.04 });
       M.autoSmooth(base, 46); r.parts = splitCls(base); r.car = car || big; bodyCache[key] = r;
@@ -322,7 +323,12 @@
     if (r.parts[2]) { const hm = new T.Mesh(r.parts[2], M.matHead); ch.add(hm); G.userData.head = hm; }
     if (r.parts[3]) { const tm = new T.MeshBasicMaterial({ vertexColors: true }); tm.color.setScalar(0.62); const t = new T.Mesh(r.parts[3], tm); ch.add(t); G.userData.tailMat = tm; }
     G.userData.isCar = r.car; G.userData.L = r.L; G.userData.W = r.W; G.userData.type = type;
-    if (r.wp.length) { addWheels(G, r.wp, r.wr, r.wW || 0.34, opt.rim); G.userData.wheelW = r.wW || 0.34; }
+    if (r.wheelGeo) { // bikes / scooters / karts: their own spoked or cast wheels (front one rides in the steering group)
+      if (r.steer && !r.steerParts) { const sg = r.steer.K.build('#ffffff', r.accent); M.autoSmooth(sg, 46); r.steerParts = splitCls(sg); }
+      let sg = null; if (r.steer) { sg = new T.Group(); sg.position.set(0, 0, r.steer.z); ch.add(sg); G.userData.steerG = sg; const sp = r.steerParts; if (sp[0]) { const g2 = sp[0].clone(); g2.userData.paint = sp[0].userData.paint; const m2 = new T.Mesh(g2, M.mat); m2.castShadow = true; m2.position.z = -r.steer.z; sg.add(m2); M.repaint(m2, color || '#ff4fd8', opt.accent || r.accent); G.userData.steerBody = m2; } if (sp[2]) { const h2 = new T.Mesh(sp[2], M.matHead); h2.position.z = -r.steer.z; sg.add(h2); } if (sp[1]) { const g3 = new T.Mesh(sp[1], M.matGlass); g3.position.z = -r.steer.z; sg.add(g3); } }
+      G.userData.wheels = []; G.userData.wheelR = r.wr; G.userData.wheelW = r.wW || 0.1; G.userData.bike = true;
+      r.wp.forEach((p, i) => { const geo = r.wheelGeo[i] || r.wheelGeo[0]; const m = new T.Mesh(geo, M.matWheel); m.castShadow = true; const wr = p[2] || r.wr; if (sg && p[1] === r.steer.wz) { m.position.set(p[0], wr, p[1] - r.steer.z); sg.add(m); } else { m.position.set(p[0], wr, p[1]); G.add(m); m.userData.front = !!(p[1] > 0 && !r.steer && r.wp.length > 2); } if (p[0] < 0) m.rotation.y = PI; G.userData.wheels.push(m); });
+    } else if (r.wp.length) { addWheels(G, r.wp, r.wr, r.wW || 0.34, opt.rim); G.userData.wheelW = r.wW || 0.34; }
     else G.userData.wheels = [];
     if (r.rotor) {
       const rot = new T.Group(); const bg = U.merge([U.paint(rbox(0.32, 0.06, 9.4, 0.03), '#2a2a2a'), U.paint(rbox(9.4, 0.06, 0.32, 0.03), '#2a2a2a'), U.paint(cyl(0.2, 0.2, 0.2, 8), '#666')]);
@@ -342,6 +348,7 @@
       if (opt.beam) { M.beamMat = M.beamMat || new T.MeshBasicMaterial({ map: T2.beam, transparent: true, depthWrite: false, blending: T.AdditiveBlending, opacity: 0.8 }); const bm = new T.Mesh(new T.PlaneGeometry(9, 18).rotateX(-PI / 2), M.beamMat); bm.position.set(0, 0.1, r.L / 2 + 9); bm.renderOrder = 2; ng.add(bm); }
       ch.add(ng); ng.visible = M.nightOn; G.userData.night = ng; M.nightList.push(ng);
     }
+    if (r.rider && M.addRider && !opt.noRider) M.addRider(G, r.rider, opt.rider || '#3b82f6', type);
     if (opt.glow) M.setGlow(G, opt.glow);
     if (M.useLow && M.lowMats) G.traverse((o) => { if (o.isMesh && M.lowMats.has(o.material)) o.material = M.lowMats.get(o.material); }); // LOW graphics
     return G;
@@ -354,6 +361,7 @@
   M.spinWheels = function (G, v, dt, steer) {
     const ws = G.userData.wheels; if (!ws || !ws.length) return; const r = G.userData.wheelR || 0.4;
     G.userData.spin = (G.userData.spin || 0) + v * dt / r;
+    if (G.userData.steerG) G.userData.steerG.rotation.y = steer * 0.5;
     for (const w of ws) { w.rotation.order = 'YXZ'; w.rotation.x = w.position.x < 0 ? -G.userData.spin : G.userData.spin; w.rotation.y = (w.position.x < 0 ? PI : 0) + (w.userData.front ? steer * 0.45 : 0); }
   };
 

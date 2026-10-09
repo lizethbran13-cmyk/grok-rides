@@ -158,14 +158,16 @@
     if (G.route && G.route.length > 1) { x.strokeStyle = '#3ff0ff'; x.lineWidth = 9 / sc * 0.5; x.lineCap = 'round'; x.lineJoin = 'round'; x.beginPath(); G.route.forEach((p, i) => (i ? x.lineTo(p.x, p.z) : x.moveTo(p.x, p.z))); x.stroke(); }
     const rc = GR.Race.cur; if (rc && !rc.air) { x.strokeStyle = 'rgba(255,79,216,.85)'; x.lineWidth = 6 / sc * 0.5; x.beginPath(); rc.P.pts.forEach((p, i) => (i ? x.lineTo(p.x, p.z) : x.moveTo(p.x, p.z))); if (rc.P.closed) x.closePath(); x.stroke(); }
     const dot = (px, pz, col, r) => { x.fillStyle = col; x.beginPath(); x.arc(px, pz, r / sc, 0, 7); x.fill(); x.lineWidth = 1.5 / sc; x.strokeStyle = '#fff'; x.stroke(); };
-    if (!rc) (GR.PL.list || []).forEach((p) => { if (Math.abs(p.x - me.x) < radius * 1.5 && Math.abs(p.z - me.z) < radius * 1.5) { x.save(); x.translate(p.door.x, p.door.z); x.rotate(hd); x.font = 'bold ' + (16 / sc) + 'px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#16a34a'; x.beginPath(); x.arc(0, 0, 9 / sc, 0, 7); x.fill(); x.fillStyle = '#fff'; x.fillText(p.icon, 0, 1 / sc); x.restore(); } });
+    if (!rc) (GR.PL.list || []).forEach((p) => { if (Math.abs(p.x - me.x) < radius * 1.5 && Math.abs(p.z - me.z) < radius * 1.5) { x.save(); x.translate(p.door.x, p.door.z); x.rotate(hd); x.font = 'bold ' + (16 / sc) + 'px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = p.kind === 'myhome' ? (GR.Home.owns(p.id) ? '#ff4fd8' : '#f8fafc') : '#16a34a'; x.beginPath(); x.arc(0, 0, (p.kind === 'myhome' ? 11 : 9) / sc, 0, 7); x.fill(); x.fillStyle = '#fff'; x.fillText(p.icon, 0, 1 / sc); x.restore(); } });
     if (!rc) GR.SC.markers.forEach((m) => { if (Math.abs(m.s.x - me.x) < radius * 1.5 && Math.abs(m.s.z - me.z) < radius * 1.5) dot(m.s.x, m.s.z, SPOTCOL[m.s.type], 5); });
     if (rc) { const t = GR.Race.nextTarget(); if (t) dot(t.x, t.z, '#ffffff', 6); rc.ai.forEach((a) => dot(a.x, a.z, '#ff3b3b', 3.5)); }
     const tg = G.gpsTarget(); if (tg) dot(tg.x, tg.z, '#3ff0ff', 6);
-    for (const k in G.remotes) { const r = G.remotes[k]; if (r.veh) dot(r.veh.x, r.veh.z, r.color, 5); }
+    for (const k in G.remotes) { const r = G.remotes[k]; if (r.veh) { dot(r.veh.x, r.veh.z, r.color, 8); x.save(); x.translate(r.veh.x, r.veh.z); x.rotate(hd); x.font = (11 / sc) + 'px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText((GR.VEH[r.veh.type] || {}).icon || '🚗', 0, 0.5 / sc); x.restore(); } }
     x.restore();
     // me arrow (always up)
     x.save(); x.translate(S / 2, S / 2); x.fillStyle = '#ff4fd8'; x.strokeStyle = '#fff'; x.lineWidth = 3; x.beginPath(); x.moveTo(0, -14); x.lineTo(10, 11); x.lineTo(0, 5); x.lineTo(-10, 11); x.closePath(); x.fill(); x.stroke(); x.restore();
+    // which ride you're on (little icon badge next to your arrow)
+    { const ic = me.V && me.V.icon; if (ic) { x.save(); x.fillStyle = 'rgba(58,23,71,.85)'; x.beginPath(); x.arc(S / 2 + 17, S / 2 + 15, 11, 0, 7); x.fill(); x.font = '13px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ic, S / 2 + 17, S / 2 + 16); x.restore(); } }
     // north tick
     const nx = S / 2 + Math.sin(-hd) * (S / 2 - 14), ny = S / 2 - Math.cos(-hd) * (S / 2 - 14); x.fillStyle = '#3a1747'; x.beginPath(); x.arc(nx, ny, 11, 0, 7); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 15px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('N', nx, ny + 1);
   }
@@ -184,6 +186,7 @@
     const hasN = !G.passenger && !G.foot && me.kind !== 'balloon'; $('nitroChip').classList.toggle('hidden', !hasN); $('bNitro').classList.toggle('hidden', !hasN);
     if (hasN) { const full = me.nitro > 0 ? me.nitro / Math.max(0.1, me.nitroMax || me.nitro) : me.boost; $('nitroBar').style.width = Math.round(full * 100) + '%'; $('nitroChip').classList.toggle('firing', me.nitro > 0); $('bNitro').classList.toggle('empty', me.nitro <= 0 && me.boost < 0.2); $('bNitro').classList.toggle('ready', me.nitro <= 0 && me.boost >= 0.999); }
     $('bDrift').classList.toggle('hidden', G.foot || G.passenger || me.kind !== 'ground');
+    { const lbl = me.V.hand === 'WHEELIE' ? '🏍️ WHEELIE' : me.V.hand === 'SKID' ? '✋ SKID' : '🌀 DRIFT'; if (UI._dl !== lbl) { UI._dl = lbl; $('bDrift').firstElementChild.textContent = lbl; } }
     if (hudT > 0.25) {
       hudT = 0;
       { let bh = ''; for (const k in G.buffs) if (G.buffs[k] > 0) bh += '<span>' + GR.IN.BUFFNAME[k] + ' ' + Math.ceil(G.buffs[k] / 60) + 'm</span>'; if (GR.Race.cur && bh) bh = '<span>⏸ snacks paused in races</span>'; const bc = $('buffChip'); if (bc.innerHTML !== bh) bc.innerHTML = bh; bc.classList.toggle('hidden', !bh); }
@@ -367,7 +370,7 @@
     const G = GR.G; UI.dismissable = true;
     let h = '<h2>🗺️ MAP</h2><canvas id="mapCv" width="600" height="600"></canvas><div class="legend"><span>🟢 Garage</span><span>🟡 Dealer</span><span>🔵 Job</span><span>🟣 Race</span><span>🩷 You</span></div><p class="sub small">Tap a place to set your GPS.</p>';
     const canFT = !GR.Race.cur && !GR.Jobs.cur && !G.passenger;
-    h += '<h3>FAST TRAVEL</h3>' + (canFT ? '<div class="ftlist">' + GR.SPOTS.filter((s) => s.type === 'garage' || s.type === 'dealer').map((s) => '<button class="btn blue" data-ft="' + s.id + '">' + esc(s.icon + ' ' + s.name.replace(' Garage', '').replace('Grok Motors Dealership', 'Grok Motors')) + '</button>').join('') + '</div>' : '<p class="sub small">Finish your race or job to fast travel.</p>');
+    h += '<h3>FAST TRAVEL</h3>' + (canFT ? '<div class="ftlist">' + (GR.Home && GR.Home.main() ? '<button class="btn primary" data-ft="home">🏠 MY HOME</button>' : '') + GR.SPOTS.filter((s) => s.type === 'garage' || s.type === 'dealer').map((s) => '<button class="btn blue" data-ft="' + s.id + '">' + esc(s.icon + ' ' + s.name.replace(' Garage', '').replace('Grok Motors Dealership', 'Grok Motors')) + '</button>').join('') + '</div>' : '<p class="sub small">Finish your race or job to fast travel.</p>');
     h += '<div class="btnrow">' + (G.gpsPick ? '<button class="btn alt small" data-a="clear">CLEAR GPS</button>' : '') + '<button class="btn alt" data-a="close">CLOSE</button></div>';
     UI.panel(h, (root) => {
       const cv = root.querySelector('#mapCv'), x = cv.getContext('2d');
@@ -377,8 +380,9 @@
       const names = { city: [650, -50], town: [-450, 450], desert: [300, 1250], tundra: [100, -1250], mountain: [-850, -350], lake: [-60, 100], airfield: [1150, 250] };
       for (const k in names) { const p = P(names[k][0], names[k][1]); x.fillStyle = 'rgba(58,23,71,.75)'; const t = W.REGION_NAMES[k]; const w = x.measureText(t).width + 10; x.fillRect(p[0] - w / 2, p[1] - 9, w, 18); x.fillStyle = '#fff'; x.fillText(t, p[0], p[1]); }
       GR.SC.markers.forEach((m) => { const p = P(m.s.x, m.s.z); x.fillStyle = SPOTCOL[m.s.type]; x.beginPath(); x.arc(p[0], p[1], 7, 0, 7); x.fill(); x.strokeStyle = '#3a1747'; x.lineWidth = 2; x.stroke(); });
-      const v = G.viewVeh(); const pp = P(v.x, v.z); x.fillStyle = '#ff4fd8'; x.beginPath(); x.arc(pp[0], pp[1], 9, 0, 7); x.fill(); x.strokeStyle = '#fff'; x.lineWidth = 3; x.stroke();
-      for (const k in G.remotes) { const r = G.remotes[k]; if (r.veh) { const p = P(r.veh.x, r.veh.z); x.fillStyle = r.color; x.beginPath(); x.arc(p[0], p[1], 7, 0, 7); x.fill(); x.stroke(); } }
+      (GR.Home ? GR.Home.places() : []).forEach((hp) => { const p = P(hp.door.x, hp.door.z), own = GR.Home.owns(hp.id); x.fillStyle = own ? '#ff4fd8' : '#f8fafc'; x.beginPath(); x.arc(p[0], p[1], 11, 0, 7); x.fill(); x.strokeStyle = '#3a1747'; x.lineWidth = 2; x.stroke(); x.font = '13px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(own ? '🏠' : '🏷️', p[0], p[1] + 1); });
+      const v = G.viewVeh(); const pp = P(v.x, v.z); x.fillStyle = '#ff4fd8'; x.beginPath(); x.arc(pp[0], pp[1], 11, 0, 7); x.fill(); x.strokeStyle = '#fff'; x.lineWidth = 3; x.stroke(); x.font = '13px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(v.V.icon, pp[0], pp[1] + 1);
+      for (const k in G.remotes) { const r = G.remotes[k]; if (r.veh) { const p = P(r.veh.x, r.veh.z); x.fillStyle = r.color; x.beginPath(); x.arc(p[0], p[1], 10, 0, 7); x.fill(); x.stroke(); x.font = '12px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText((GR.VEH[r.veh.type] || {}).icon || '🚗', p[0], p[1] + 1); } }
       const tg = G.gpsTarget(); if (tg) { const p = P(tg.x, tg.z); x.strokeStyle = '#3ff0ff'; x.lineWidth = 4; x.beginPath(); x.arc(p[0], p[1], 12, 0, 7); x.stroke(); }
       cv.addEventListener('click', (e) => {
         const r = cv.getBoundingClientRect(), mx = (e.clientX - r.left) / r.width * 600, my = (e.clientY - r.top) / r.height * 600;
@@ -386,7 +390,7 @@
         if (best) { G.setGps(best); UI.toast('GPS set: ' + best.name); close(); }
       });
       on(root, '[data-a=close]', close); on(root, '[data-a=clear]', () => { G.setGps(null); close(); });
-      on(root, '[data-ft]', (e) => { const s = GR.SPOTS.find((q) => q.id === e.dataset.ft); close(); G.fastTravel(s); });
+      on(root, '[data-ft]', (e) => { if (e.dataset.ft === 'home') { close(); GR.Home.goHome(); return; } const s = GR.SPOTS.find((q) => q.id === e.dataset.ft); close(); G.fastTravel(s); });
     });
   };
   UI.menu = function () {

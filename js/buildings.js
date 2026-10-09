@@ -282,7 +282,7 @@
     groups.forEach((L) => {
       const g = new T.BufferGeometry(); for (const a in geo.attributes) g.setAttribute(a, geo.attributes[a]); if (geo.index) g.setIndex(geo.index);
       const im = new T.InstancedMesh(g, mat, L.length); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
-      L.forEach((p, i) => { q.setFromEuler(e.set(0, p[3], 0)); v.set(p[0], p[1], p[2]); m4.compose(v, q, s); im.setMatrixAt(i, m4); x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); z0 = Math.min(z0, p[2]); z1 = Math.max(z1, p[2]); });
+      L.forEach((p, i) => { p.im = im; p.ii = i; q.setFromEuler(e.set(0, p[3], 0)); v.set(p[0], p[1], p[2]); m4.compose(v, q, s); im.setMatrixAt(i, m4); x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); z0 = Math.min(z0, p[2]); z1 = Math.max(z1, p[2]); });
       g.boundingSphere = new T.Sphere(new T.Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + gr);
       holder.add(im);
     });
@@ -311,6 +311,9 @@
     const pools = PROPS.lamp.map((l) => { const yaw = l[3]; return [l[0] + Math.sin(yaw) * 1.4, l[1] + 0.06, l[2] + Math.cos(yaw) * 1.4, 0]; });
     B.poolMesh = instanced(new T.PlaneGeometry(9, 9).rotateX(-PI / 2), pools, B.poolMat, scene); if (B.poolMesh) { B.poolMesh.visible = false; B.poolMesh.children.forEach((c) => { c.renderOrder = 3; }); }
     GR.QTHIN = GR.QTHIN || []; ['tree', 'bench', 'bin', 'hydrant', 'stop'].forEach((k) => { const h = instanced(G[k], PROPS[k], M.matMatte, scene); if (h && k !== 'stop') h.children.forEach((im) => GR.QTHIN.push(im)); }); // LOW graphics thins these out
+    // link crushable props (benches, bins, hydrants) to their colliders so the monster truck can squash them
+    { const idx = new Map(); ['bench', 'bin', 'hydrant'].forEach((k) => PROPS[k].forEach((p) => idx.set(k + Math.round(p[0] * 10) + ',' + Math.round(p[2] * 10), p)));
+      W.colliders.forEach((c) => { if (c.tag !== 'bench' && c.tag !== 'bin' && c.tag !== 'hydrant') return; const x = c.t === 'c' ? c.x : (c.x0 + c.x1) / 2, z = c.t === 'c' ? c.z : (c.z0 + c.z1) / 2; const p = idx.get(c.tag + Math.round(x * 10) + ',' + Math.round(z * 10)); if (p) { c.prop = p; if (c.top < p[1] + 0.5) c.top += p[1]; } }); } // prop tops were ground-relative: make them absolute so props on hills still block (or get crushed)
     B.propCounts = {}; for (const k in PROPS) B.propCounts[k] = PROPS[k].length;
     B.lamps = PROPS.lamp;
   };
@@ -436,7 +439,7 @@
       if (bx === 550 && bz === -100) continue;
       const hl = 7, hr = bx + 100 >= 950 ? 8 : 7, ix0 = bx + hl, ix1 = bx + 100 - hr, iz0 = bz + 7, iz1 = bz + 93;
       furnish(1, 0, 0, ix1 - ix0, ix0, iz0, 0, -1, r); furnish(1, 0, 0, ix1 - ix0, ix0, iz1, 0, 1, r); furnish(0, 1, 0, iz1 - iz0, ix0, iz0, -1, 0, r); furnish(0, 1, 0, iz1 - iz0, ix1, iz0, 1, 0, r);
-      if (r() < 0.25) { const x = ix0 + 30, z = iz0 + 2.6; PROPS.stop.push([x, W.gy(x, z), z, PI]); W.addBox(x - 1.8, z - 0.9, x + 1.8, z + 0.3, 3, 'stop'); }
+      if (r() < 0.25) { const x = ix0 + 30, z = iz0 + 2.6; if (nearDoorPt(x, z, 3)) continue; PROPS.stop.push([x, W.gy(x, z), z, PI]); W.addBox(x - 1.8, z - 0.9, x + 1.8, z + 0.3, 3, 'stop'); }
     }
   };
   // ---------- town: sidewalk rings, crosswalks, lamps ----------

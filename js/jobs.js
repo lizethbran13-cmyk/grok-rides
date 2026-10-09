@@ -10,11 +10,11 @@
     { n: 'Wind Farm', x: 230, z: -540, y: 70 }, { n: 'Frozen Lake', x: 600, z: -1150, y: 40 }, { n: 'Water Tower', x: -560, z: 560, y: 45 }, { n: 'Control Tower', x: 1215, z: 330, y: 55 }];
   function canDo(jobId, veh) {
     const need = GR.JOBS[jobId].need, V = veh.V, tags = V.tags || [];
-    if (need === 'ground') return V.kind === 'ground' && veh.type !== 'snowmobile';
+    if (need === 'ground') return V.kind === 'ground' && veh.type !== 'snowmobile' && !(jobId === 'taxi' && (V.two || V.kart)); // no taxi riders on a bike / kart
     return tags.indexOf(need) >= 0;
   }
   J.canDo = canDo;
-  J.whoCan = function (jobId) { const need = GR.JOBS[jobId].need; return GR.VEH_ORDER.filter((k) => { const V = GR.VEH[k]; return need === 'ground' ? V.kind === 'ground' && k !== 'snowmobile' : (V.tags || []).indexOf(need) >= 0; }); };
+  J.whoCan = function (jobId) { const need = GR.JOBS[jobId].need; return GR.VEH_ORDER.filter((k) => { const V = GR.VEH[k]; return need === 'ground' ? V.kind === 'ground' && k !== 'snowmobile' && !(jobId === 'taxi' && (V.two || V.kart)) : (V.tags || []).indexOf(need) >= 0; }); };
   function placeNear(x, z, minD, maxD, filter) {
     const L = GR.PLACES.filter((p) => { const d = Math.hypot(p.x - x, p.z - z); return d >= minD && d <= maxD && (!filter || filter(p)); });
     return L.length ? L[(rnd() * L.length) | 0] : GR.PLACES[(rnd() * GR.PLACES.length) | 0];
@@ -26,7 +26,7 @@
   }
   // ---- create a job ----
   J.start = function (jobId, spot) {
-    const G = GR.G, v = G.me, mul = { taxi: v.type === 'taxi' ? 1.5 : 1, pizza: v.type === 'icecream' ? 1.3 : 1, cargo: v.type === 'bigrig' ? 1.5 : 1, tour: v.kind === 'balloon' ? 1.25 : 1 }[jobId] || 1;
+    const G = GR.G, v = G.me, mul = { taxi: v.type === 'taxi' ? 1.5 : 1, pizza: v.type === 'icecream' ? 1.3 : v.type === 'moped' ? 1.3 : v.V.two ? 1.15 : 1, cargo: v.type === 'bigrig' ? 1.5 : 1, tour: v.kind === 'balloon' ? 1.25 : 1 }[jobId] || 1;
     const j = { id: jobId, def: GR.JOBS[jobId], stops: [], idx: 0, t: 0, limit: 0, pay: 0, mul, mood: 100, cond: 100, dmg0: v.dmg, hits0: v.hits, spot, obj: [], extra: {} };
     const sx = v.x, sz = v.z;
     if (jobId === 'taxi') {

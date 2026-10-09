@@ -4,7 +4,7 @@
   const GR = window.GR, GN = window.GrokNet, UI = GR.UI;
   const $ = (id) => document.getElementById(id);
   const N = GR.Net = {};
-  let sendT = 0, aiT = 0;
+  let sendT = 0, aiT = 0, hmN = 0;
   function G() { return GR.G; }
   function msg(t, ok) { const m = $('onlineMsg'); if (m) { m.textContent = t; m.className = 'msg' + (ok ? ' ok' : ''); } }
   function bind(room) {
@@ -15,7 +15,7 @@
       else { msg('Connected! Driving over…', true); g.start('join'); UI.toast('Joined room ' + room.code + '! 🚗'); }
       GR.Snd.fx('join'); N.badge = GN.ui.badge(room, { pos: 'bc', label: room.code }); N.badge.el.style.bottom = 'calc(4px + env(safe-area-inset-bottom))';
     });
-    room.on('join', (p) => { if (p.pid !== room.pid) { UI.toast('👋 ' + p.name + ' joined!'); GR.Snd.fx('join'); sendT = 1; } });
+    room.on('join', (p) => { if (p.pid !== room.pid) { hmN = 0; UI.toast('👋 ' + p.name + ' joined!'); GR.Snd.fx('join'); sendT = 1; } });
     room.on('leave', (p) => { removeRemote(p.pid); UI.toast(p.name + ' left the game', true); });
     room.on('message', (d, from) => onMsg(d, from));
     room.on('reconnecting', () => UI.toast('Lost the host — reconnecting…', true));
@@ -37,13 +37,13 @@
   };
   function removeRemote(pid) { const g = G(), r = g.remotes[pid]; if (!r) return; if (r.veh) r.veh.dispose(g.scene); if (r.tag) g.scene.remove(r.tag); if (r.person && r.person.parent) r.person.parent.remove(r.person); delete g.remotes[pid]; if (g.passenger === pid) { g.passenger = null; g.me.model.visible = true; g.camSnap = true; } if (GR.Race.cur) delete GR.Race.cur.others[pid]; }
   function myRaceInfo() { const r = GR.Race.cur; if (!r || !r.online) return null; return { id: r.online.id, pg: Math.round(r.me.prog), f: r.me.fin }; }
-  N.sendNow = function () { sendT = 1; };
+  N.sendNow = function (home) { sendT = 1; if (home) hmN = 0; }; // home=true: send my home info (decor/rides) right away
   N.tick = function (dt) {
     const g = G(), room = g.room; if (!room || !room.opened || !g.me) return;
     sendT += dt;
     if (sendT >= 0.1) {
       sendT = 0;
-      room.broadcast({ t: 'p', id: room.pid, n: g.myName(), c: g.myColor(), ty: g.me.type, vc: g.me.color, s: g.me.snap(), ride: g.passenger || null, rg: myRaceInfo(), ft: GR.Foot.snap() });
+      room.broadcast({ t: 'p', id: room.pid, n: g.myName(), c: g.myColor(), ty: g.me.type, vc: g.me.color, s: g.me.snap(), ride: g.passenger || null, rg: myRaceInfo(), ft: GR.Foot.snap(), hm: GR.Home && (++hmN % 20 === 1) ? GR.Home.netInfo() : undefined });
     }
     const r = GR.Race.cur;
     if (room.isHost && r && r.online && r.ai.length) { aiT += dt; if (aiT > 0.1) { aiT = 0; room.broadcast({ t: 'ai', id: r.online.id, l: GR.Race.aiSnap() }); } }
@@ -58,7 +58,7 @@
       if (!GR.VEH[d.ty]) return;
       if (!r.veh || r.type !== d.ty || r.vcol !== d.vc) {
         if (r.veh) r.veh.dispose(g.scene); r.type = d.ty; r.vcol = d.vc;
-        r.veh = new GR.Veh(d.ty, /^#[0-9a-f]{6}$/i.test(d.vc || '') ? d.vc : r.color, { remote: true }); r.veh.fixed = true; g.scene.add(r.veh.model);
+        r.veh = new GR.Veh(d.ty, /^#[0-9a-f]{6}$/i.test(d.vc || '') ? d.vc : r.color, { remote: true, rider: r.color }); r.veh.fixed = true; g.scene.add(r.veh.model);
         if (!r.tag) { r.tag = GR.M.sprite(r.name, { color: '#ffffff', bg: r.color, wide: 3, scale: 2.4, fs: 0.5, bold: true }); g.scene.add(r.tag); }
       }
       r.veh.setRemote(d.s); r.last = performance.now();
@@ -66,6 +66,7 @@
       if (r.ride && !wasRide && r.ride === g.room.pid) UI.toast('🚗 ' + r.name + ' hopped in your ride!');
       if (!r.ride && wasRide === g.room.pid) UI.toast('🚪 ' + r.name + ' hopped out.');
       if (r.tag) r.tag.visible = !r.ride;
+      if (d.hm !== undefined && GR.Home) r.home = GR.Home.netIn(d.hm);
       r.inRace = !!d.rg; GR.Foot.remote(r, d);
       const rc = GR.Race.cur; if (rc && rc.online && d.rg && d.rg.id === rc.online.id) { rc.others[d.id] = { name: r.name, prog: d.rg.pg, fin: d.rg.f }; }
     } else if (d.t === 'ai') {
@@ -82,7 +83,7 @@
       UI.toast('🏁 ' + who + ' wants to race ' + rc.name + '!');
       N.inviteRace(rc, { diff: d.diff, laps: d.laps, ai: d.ai });
     } else if (d.t === 'ev') {
-      if (d.e === 'horn' && g.remotes[d.id] && g.remotes[d.id].veh && g.me) { const rv = g.remotes[d.id].veh; if (Math.hypot(rv.x - g.me.x, rv.z - g.me.z) < 150) GR.Snd.fx(d.ty === 'icecream' ? 'jingle' : d.ty === 'police' ? 'siren' : 'horn'); }
+      if (d.e === 'horn' && g.remotes[d.id] && g.remotes[d.id].veh && g.me) { const rv = g.remotes[d.id].veh; if (Math.hypot(rv.x - g.me.x, rv.z - g.me.z) < 150) GR.Snd.fx(d.ty === 'icecream' ? 'jingle' : d.ty === 'police' ? 'siren' : (GR.VEH[d.ty] && GR.VEH[d.ty].horn) || 'horn'); }
     }
   }
   N.inviteRace = function (rc, o) {

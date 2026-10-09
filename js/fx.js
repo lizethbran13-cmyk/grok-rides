@@ -21,6 +21,8 @@
   FX.sparks = function (x, y, z, n) { for (let i = 0; i < (n || 14); i++) emit(x, y, z, (Math.random() - 0.5) * 14, Math.random() * 9 + 2, (Math.random() - 0.5) * 14, 0.5 + Math.random() * 0.3, 0.5, 1, 0.8 + Math.random() * 0.2, 0.3, 20); };
   FX.smoke = function (x, y, z, dark) { const c = dark ? 0.3 : 0.85; emit(x, y, z, (Math.random() - 0.5) * 1.5, 2 + Math.random(), (Math.random() - 0.5) * 1.5, 1.4, 1.6, c, c, c, -0.5, 2.4); };
   FX.dust = function (x, y, z, r, g, b) { emit(x + (Math.random() - 0.5), y, z + (Math.random() - 0.5), (Math.random() - 0.5) * 2, 1 + Math.random(), (Math.random() - 0.5) * 2, 0.9, 1.2, r, g, b, 0, 2); };
+  // jet-ski rooster tail: water thrown up and back behind the jet (vx/vz = backward direction)
+  FX.spray = function (x, y, z, bx, bz, n, side) { for (let i = 0; i < n; i++) { const k = 5 + Math.random() * 5; emit(x + (Math.random() - 0.5) * 0.3, y, z + (Math.random() - 0.5) * 0.3, bx * k + (Math.random() - 0.5) * 2 + (side || 0) * bz * 4, 4 + Math.random() * 4, bz * k + (Math.random() - 0.5) * 2 - (side || 0) * bx * 4, 0.7 + Math.random() * 0.3, 0.55, 0.85, 0.95, 1, 16, 1.4); } };
   FX.splash = function (x, y, z) { for (let i = 0; i < 16; i++) emit(x, y, z, (Math.random() - 0.5) * 8, 5 + Math.random() * 6, (Math.random() - 0.5) * 8, 0.8, 0.8, 0.7, 0.9, 1, 18); };
   FX.confetti = function (x, y, z) { for (let i = 0; i < 60; i++) emit(x, y, z, (Math.random() - 0.5) * 18, 8 + Math.random() * 10, (Math.random() - 0.5) * 18, 1.6, 0.9, Math.random(), Math.random(), Math.random(), 9); };
   const pops = [];

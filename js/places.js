@@ -49,7 +49,7 @@
         for (let k = 0; k < 4; k++) {
           const [dx, dz] = DIRS[k], hw = dx ? def.d / 2 : def.w / 2, hd = dx ? def.w / 2 : def.d / 2;
           const doorX = cx + dx * (def.d / 2 + 1.5), doorZ = cz + dz * (def.d / 2 + 1.5);
-          const rd = W.roadD(doorX, doorZ); if (rd < 2.5 || rd > 26) continue;
+          const rd = W.roadD(doorX, doorZ); if (rd < (def.minRd || 2.5) || rd > 26) continue;
           // the door must look toward the anchor / road
           let score;
           if (sp) { const tx = ax - doorX, tz = az - doorZ, dd = Math.hypot(tx, tz); if ((tx * dx + tz * dz) < dd * 0.35) continue; score = Math.abs(dd - 16) + rd * 0.3; }
@@ -107,6 +107,7 @@
   // ---------- exterior building ----------
   PL.buildExteriors = function (scene) {
     PL.list.forEach((p) => {
+      if (p.kind === 'myhome') { GR.Home.exterior(scene, p); return; }
       const g = new T.Group(); g.position.set(p.x, p.floor, p.z); g.rotation.y = p.yaw;
       const ft = frontTex(p), st = sideTex(p), roof = lam(shade(p.wall, 0.75));
       const sideM = new T.MeshLambertMaterial({ map: st }), frontM = new T.MeshLambertMaterial({ map: ft, emissive: 0x222222 }); PL.nightMats = PL.nightMats || []; PL.nightMats.push(frontM);

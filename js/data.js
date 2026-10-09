@@ -21,9 +21,18 @@
     limo: { name: 'Stretch Limo', icon: '🤵', kind: 'ground', price: 10000, vmax: 46, acc: 15, grip: 0.98, turn: 1.55, off: 0.3, snow: 0.25, mass: 1.8, tough: 0.9, r: 3.0, tags: ['limo'], color: '#111111', desc: 'Unlocks Limo VIP gigs.' },
     bigrig: { name: 'Big Grok Rig', icon: '🚛', kind: 'ground', price: 12000, vmax: 39, acc: 10, grip: 0.95, turn: 1.35, off: 0.45, snow: 0.4, mass: 4, tough: 0.5, r: 3.0, tags: ['cargo'], color: '#e11d48', desc: 'Biggest Cargo Hauls pay the most.' },
     heli: { name: 'Grokopter', icon: '🚁', kind: 'heli', price: 14000, vmax: 34, acc: 10, grip: 1, turn: 1.4, off: 1, snow: 1, mass: 1, tough: 1, r: 3.4, tags: ['tour'], color: '#ff4fd8', desc: 'Hover anywhere. Does Sky Tours.' },
-    monster: { name: 'Monster Truck', icon: '🦖', kind: 'ground', price: 15000, vmax: 50, acc: 20, grip: 1.0, turn: 1.75, off: 1, snow: 0.85, mass: 2, tough: 1.6, r: 2.8, tags: ['tow'], color: '#22c55e', desc: 'Giant wheels, super tough, goes anywhere.' },
+    monster: { name: 'Monster Truck', icon: '🦖', kind: 'ground', crush: 1, bigSus: 1, horn: 'roar', snd: 'monster', price: 15000, vmax: 50, acc: 20, grip: 1.0, turn: 1.75, off: 1, snow: 0.85, mass: 2, tough: 1.6, r: 2.8, tags: ['tow'], color: '#22c55e', desc: 'Giant bouncy suspension. Squashes benches, bins and hydrants flat!' },
     plane: { name: 'Stunt Plane', icon: '✈️', kind: 'plane', price: 18000, vmax: 62, acc: 12, grip: 1, turn: 1.1, off: 0.6, snow: 0.6, mass: 1, tough: 1, r: 3.5, tags: ['tour'], color: '#ffffff', desc: 'Take off from any long road. Fastest way around!' },
-    super: { name: 'Grokzilla R', icon: '🏁', kind: 'ground', price: 22000, vmax: 72, acc: 32, grip: 1.15, turn: 2.05, off: 0.2, snow: 0.2, mass: 1, tough: 1.1, r: 2.2, color: '#ffd23f', desc: 'The fastest car in the world.' }
+    super: { name: 'Grokzilla R', icon: '🏁', kind: 'ground', price: 22000, vmax: 72, acc: 32, grip: 1.15, turn: 2.05, off: 0.2, snow: 0.2, mass: 1, tough: 1.1, r: 2.2, color: '#ffd23f', desc: 'The fastest car in the world.' },
+    // ---- two-wheelers, scooters, kart, jet ski (rides.js models). two = 2 wheels (rider leans), pedal = leg-powered, wheelie = max wheelie angle ----
+    kick: { name: 'Kick Scooter', icon: '🛴', kind: 'ground', price: 300, vmax: 10, acc: 6, grip: 1.05, turn: 2.8, off: 0.2, snow: 0.2, mass: 0.2, tough: 1.2, r: 0.8, two: 1, pedal: 1, color: '#3ff0ff', horn: 'bell', snd: 'pedal', hand: 'SKID', desc: 'Push, glide, zip around the sidewalks. Super light!' },
+    bmx: { name: 'BMX Bandit', icon: '🚲', kind: 'ground', price: 600, vmax: 15, acc: 8.5, grip: 1.1, turn: 2.6, off: 0.8, snow: 0.3, mass: 0.25, tough: 1.2, r: 0.9, two: 1, pedal: 1, wheelie: 0.6, color: '#ff4fd8', horn: 'bell', snd: 'pedal', hand: 'WHEELIE', desc: 'Pedal power! Pops wheelies and big jumps off ramps.' },
+    roadbike: { name: 'Road Racer', icon: '🚴', kind: 'ground', price: 1200, vmax: 20, acc: 8, grip: 1.05, turn: 2.2, off: 0.25, snow: 0.2, mass: 0.25, tough: 1, r: 0.9, two: 1, pedal: 1, color: '#3b82f6', horn: 'bell', snd: 'pedal', hand: 'SKID', desc: 'Skinny tyres, drop bars, the fastest pedal bike.' },
+    moped: { name: 'Zippy Moped', icon: '🛵', kind: 'ground', price: 2000, vmax: 25, acc: 11, grip: 1.0, turn: 2.4, off: 0.35, snow: 0.3, mass: 0.45, tough: 1, r: 1.0, two: 1, color: '#7dd3c0', horn: 'meep', snd: 'moped', hand: 'SKID', tags: ['treat'], desc: 'Cute and buzzy. Pizza deliveries pay extra!' },
+    kart: { name: 'Go-Kart', icon: '🏎️', kind: 'ground', price: 3500, vmax: 38, acc: 27, grip: 1.35, turn: 2.5, off: 0.3, snow: 0.25, mass: 0.5, tough: 1.1, r: 1.0, kart: 1, color: '#ef4444', snd: 'kart', desc: 'Low, grippy and twitchy. Corners like it is on rails.' },
+    jetski: { name: 'Wave Jet', icon: '🌊', kind: 'boat', price: 4000, vmax: 36, acc: 22, grip: 0.85, turn: 2.4, off: 0, snow: 0, mass: 0.6, tough: 1.1, r: 1.6, color: '#facc15', snd: 'jetski', ski: 1, desc: 'Bounce over the waves with a big rooster-tail spray!' },
+    cruiser: { name: 'Thunder Cruiser', icon: '🏍️', kind: 'ground', price: 7500, vmax: 50, acc: 20, grip: 1.0, turn: 1.85, off: 0.35, snow: 0.25, mass: 0.85, tough: 1.1, r: 1.3, two: 1, wheelie: 0.35, color: '#b91c1c', snd: 'cruiser', hand: 'WHEELIE', desc: 'Low, loud and chrome. Lazy wheelies on demand.' },
+    sportbike: { name: 'Grok Ninja', icon: '🏍️', kind: 'ground', price: 11000, vmax: 64, acc: 31, grip: 1.1, turn: 2.15, off: 0.2, snow: 0.2, mass: 0.7, tough: 1, r: 1.2, two: 1, wheelie: 0.55, color: '#22c55e', snd: 'sport', hand: 'WHEELIE', desc: 'Super fast sport bike. Hold WHEELIE + GAS to pop the front.' },
   };
   delete GR.VEH.heli_;
   for (const k in GR.VEH) GR.VEH[k].id = k;
@@ -85,8 +94,8 @@
   GR.DIFF = { easy: { name: 'EASY', pace: 0.78, corner: 0.76, pay: 0.7 }, normal: { name: 'NORMAL', pace: 0.88, corner: 0.86, pay: 1 }, hard: { name: 'HARD', pace: 0.97, corner: 0.96, pay: 1.5 } };
 
   GR.JOBS = {
-    taxi: { name: 'Taxi Fares', icon: '🚕', need: 'ground', desc: 'Pick up riders and drive them where they want to go. Any car works; a Grok Cab pays 50% more.' },
-    pizza: { name: 'Pizza Delivery', icon: '🍕', need: 'ground', desc: 'Deliver 3 hot pizzas around Pine Hollow before they get cold!' },
+    taxi: { name: 'Taxi Fares', icon: '🚕', need: 'ground', desc: 'Pick up riders and drive them where they want to go. Any car works (not bikes or karts); a Grok Cab pays 50% more.' },
+    pizza: { name: 'Pizza Delivery', icon: '🍕', need: 'ground', desc: 'Deliver 3 hot pizzas around Pine Hollow before they get cold! Mopeds pay +30%, bikes +15%.' },
     cargo: { name: 'Cargo Haul', icon: '📦', need: 'cargo', desc: 'Haul cargo across the world. Needs a Big Rig or Trail Boss 4x4. Crashing damages the cargo!' },
     limo: { name: 'Limo VIP', icon: '🤵', need: 'limo', desc: 'Drive a famous VIP smoothly. Bumps make them grumpy! Needs a Stretch Limo.' },
     tow: { name: 'Tow Jobs', icon: '🪝', need: 'tow', desc: 'Rescue broken-down cars and tow them to a garage. Needs a tow truck, 4x4 or Monster Truck.' },

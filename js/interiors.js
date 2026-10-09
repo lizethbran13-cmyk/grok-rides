@@ -54,7 +54,7 @@
   // ---------- builder ----------
   const ROOM = { showroom: [30, 22, 7.5], garage: [24, 18, 6.5], jobs: [20, 16, 5], hotel: [26, 20, 7.5], raceclub: [24, 18, 6], diner: [20, 15, 4.8], pizza: [18, 14, 4.8], store: [20, 15, 4.8], gas: [18, 13, 4.5], trading: [20, 15, 5], icecafe: [22, 16, 5], lodge: [22, 16, 7] };
   function Builder(p) {
-    const sz = (p.id === 'skyhangar' ? [36, 26, 11] : p.gen ? (IN.ROOMV[p.variant] || [18, 14, 4.8]) : ROOM[p.kind]).slice(); const b = this;
+    const sz = (p.room ? p.room : p.id === 'skyhangar' ? [36, 26, 11] : p.gen ? (IN.ROOMV[p.variant] || [18, 14, 4.8]) : ROOM[p.kind]).slice(); const b = this;
     b.p = p; b.W = sz[0]; b.D = sz[1]; b.H = sz[2]; b.scene = new T.Scene(); b.solids = []; b.stations = []; b.npcs = []; b.anims = []; b.mats = {};
     b.scene.background = new T.Color('#1e1b2e');
   }
@@ -542,6 +542,7 @@
     document.body.classList.remove('inside'); $('regionN').textContent = W.REGION_NAMES[W.region(Foot.x, Foot.z)]; G.camSnap = true; if (!quiet) GR.Snd.fx('ui'); GR.Net.sendNow && GR.Net.sendNow();
   };
   function place() { const m = body(); m.position.set(Foot.x, Foot.y, Foot.z); m.rotation.y = Foot.yaw; }
+  Foot.body = body; IN.dispose = dispose;
   Foot.nearDoor = (x, z, r) => GR.PL.nearDoor(x, z, r);
   Foot.nearStation = function () { const b = G_().inside; if (!b) return null; let best = null, bd = 1.3; b.stations.forEach((s) => { const d = Math.hypot(s.x - Foot.x, s.z - Foot.z); if (d < bd) { bd = d; best = s; } }); return best; };
   Foot.nearNpc = function () { const b = G_().inside; if (!b) return null; let best = null, bd = 2.0; b.npcs.forEach((n) => { const d = Math.hypot(n.x - Foot.x, n.z - Foot.z); if (d < bd) { bd = d; best = n; } }); return best; };
@@ -555,7 +556,8 @@
       const n = Foot.nearNpc(); if (n) return { label: '💬 TALK: ' + n.name.split(' ').pop(), fn: () => Foot.talk(n) };
       return null;
     }
-    const p = Foot.nearDoor(Foot.x, Foot.z, 3.2); if (p) return { label: '🚪 ENTER ' + p.short, fn: () => Foot.enter(p) };
+    const ho = GR.Home && GR.Home.footOption(); if (ho) return ho;
+    const p = Foot.nearDoor(Foot.x, Foot.z, 3.2); if (p && p.kind === 'myhome') return GR.Home.doorOption(p, false); if (p) return { label: '🚪 ENTER ' + p.short, fn: () => Foot.enter(p) };
     const fo = GR.Fun && GR.Fun.footOption && GR.Fun.footOption(); if (fo) return fo;
     const dv = Math.hypot(v.x - Foot.x, v.z - Foot.z);
     if (dv < (v.L || 4) / 2 + 4) return { label: '🚗 GET IN', fn: () => Foot.getIn() };
