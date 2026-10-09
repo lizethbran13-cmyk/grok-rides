@@ -27,11 +27,13 @@
     buildRoads(scene);
     buildWater(scene);
     const statics = []; // vertex-colored static geometry
+    GR.PL.layout();
     buildCity(scene, statics);
     buildTown(statics);
     buildMesas(statics);
     buildLandmarks(scene, statics);
     buildTrees(scene);
+    GR.PL.buildExteriors(scene);
     const g = U.merge(statics); const m = new T.Mesh(g, M.matMatte); scene.add(m); SC.statics = m;
     buildMarkers(scene);
   };
@@ -120,16 +122,17 @@
   }
   function buildCity(scene, statics) {
     const styles = [{ t: winTex('#d9dee8', '#3d6fb6', 0.15), o: { p: [], uv: [], n: [] } }, { t: winTex('#e8d6b8', '#40597a', 0.2), o: { p: [], uv: [], n: [] } }, { t: winTex('#7d8796', '#62c4ff', 0.1), o: { p: [], uv: [], n: [] } }, { t: winTex('#f2b8c6', '#3a4f8a', 0.2), o: { p: [], uv: [], n: [] } }];
-    const r = U.rng(42), C = W.CITY;
+    const r = U.rng(42), C = W.CITY, fronts = { p: [], n: [], uv: [], i: [] };
     for (let bx = C.x0; bx < C.x1; bx += 100) for (let bz = C.z0; bz < C.z1; bz += 100) {
       if (bx === 550 && bz === -100) { park(bx, bz, statics); continue; }
       for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) {
         const cx = bx + 30 + a * 40, cz = bz + 30 + b * 40;
         if (GR.SPOTS.some((s) => Math.abs(s.x - cx) < 34 && Math.abs(s.z - cz) < 34)) continue;
+        if (GR.PL.blocksLot(cx, cz, 16, 16)) continue;
         const w = 22 + r() * 10, d = 22 + r() * 10, dd = Math.hypot(cx - 650, cz + 50);
         let h = 14 + 150 * Math.exp(-(dd / 240) * (dd / 240)) * (0.45 + 0.55 * r()) + r() * 12;
         const st = styles[(r() * styles.length) | 0], x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2, y0 = W.height(cx, cz) - 1;
-        walls(x0, z0, x1, z1, y0, y0 + h, st.o);
+        walls(x0, z0, x1, z1, y0 + 5.2, y0 + h, st.o); GR.PL.cityFront(fronts, statics, x0, z0, x1, z1, y0, r);
         statics.push(U.paint(U.xf(new T.BoxGeometry(w + 1, 1, d + 1), cx, y0 + h + 0.5, cz), '#8b93a1'));
         let top = h;
         if (h > 70 && r() < 0.7) { const w2 = w * 0.65, d2 = d * 0.65, h2 = 12 + r() * 30; walls(cx - w2 / 2, cz - d2 / 2, cx + w2 / 2, cz + d2 / 2, y0 + h + 1, y0 + h + 1 + h2, st.o); statics.push(U.paint(U.xf(new T.BoxGeometry(w2 + 1, 1, d2 + 1), cx, y0 + h + h2 + 1.5, cz), '#8b93a1')); top = h + h2 + 2; if (r() < 0.6) { statics.push(U.paint(U.xf(new T.CylinderGeometry(0.3, 0.5, 14, 6), cx, y0 + top + 7, cz), '#cfd4dc')); statics.push(U.paint(U.xf(new T.SphereGeometry(0.8, 8, 6), cx, y0 + top + 14, cz), '#ff3b3b')); } }
@@ -137,6 +140,7 @@
         W.addBox(x0, z0, x1, z1, y0 + top, 'bld');
       }
     }
+    scene.add(GR.PL.cityFrontMesh(fronts));
     styles.forEach((s) => {
       const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(s.o.p, 3)); g.setAttribute('normal', new T.Float32BufferAttribute(s.o.n, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(s.o.uv, 2));
       scene.add(new T.Mesh(g, new T.MeshLambertMaterial({ map: s.t })));
@@ -179,7 +183,7 @@
     const r = U.rng(9), T0 = W.TOWN;
     for (let bx = T0.x0; bx < T0.x1; bx += 100) for (let bz = T0.z0; bz < T0.z1; bz += 100) {
       const spots = [[bx + 28, bz + 22, PI], [bx + 72, bz + 22, PI], [bx + 28, bz + 78, 0], [bx + 72, bz + 78, 0], [bx + 22, bz + 50, -PI / 2], [bx + 78, bz + 50, PI / 2]];
-      spots.forEach((s) => { if (GR.SPOTS.some((p) => Math.hypot(p.x - s[0], p.z - s[1]) < 30) || W.pads.some((p) => p.tag && Math.hypot(p.x - s[0], p.z - s[1]) < 26)) return; if (r() < 0.12) return; house(s[0], s[1], s[2], r, statics); });
+      spots.forEach((s) => { if (GR.PL.blocksLot(s[0], s[1], 8, 8)) return; if (GR.SPOTS.some((p) => Math.hypot(p.x - s[0], p.z - s[1]) < 30) || W.pads.some((p) => p.tag && Math.hypot(p.x - s[0], p.z - s[1]) < 26)) return; if (r() < 0.12) return; house(s[0], s[1], s[2], r, statics); });
     }
     // water tower
     const x = -560, z = 560, y = W.height(x, z);

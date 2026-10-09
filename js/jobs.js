@@ -120,6 +120,7 @@
     if (j.id === 'limo') { pay *= 0.5 + j.mood / 200; if (j.mood > 80) { pay += 150; notes.push('VIP loved it! Tip +$150 ⭐'); } else notes.push('VIP mood ' + Math.round(j.mood) + '%'); }
     if ((j.id === 'taxi' || j.id === 'pizza') && j.mood >= 100) { pay += 40; notes.push('Smooth driving tip +$40'); }
     if (j.mul > 1) notes.push('Perfect vehicle x' + j.mul);
+    if (G.buffs && G.buffs.pay > 0) { pay *= 1.1; notes.push('Room service bonus +10% 🛎️'); }
     pay = Math.round(pay); cleanup(j); J.cur = null;
     G.earn(pay, true); G.save.stats.jobs = (G.save.stats.jobs || 0) + 1; G.save.jobsDone[j.id] = (G.save.jobsDone[j.id] || 0) + 1; G.persist();
     GR.Snd.fx('coin'); GR.FX.confetti(G.me.x, G.me.y + 3, G.me.z);

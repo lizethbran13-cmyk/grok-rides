@@ -35,7 +35,7 @@
     if (GR.Race.cur && GR.Race.cur.online) { GR.Race.cur.online = null; }
     void keepPlaying;
   };
-  function removeRemote(pid) { const g = G(), r = g.remotes[pid]; if (!r) return; if (r.veh) r.veh.dispose(g.scene); if (r.tag) g.scene.remove(r.tag); delete g.remotes[pid]; if (g.passenger === pid) { g.passenger = null; g.me.model.visible = true; g.camSnap = true; } if (GR.Race.cur) delete GR.Race.cur.others[pid]; }
+  function removeRemote(pid) { const g = G(), r = g.remotes[pid]; if (!r) return; if (r.veh) r.veh.dispose(g.scene); if (r.tag) g.scene.remove(r.tag); if (r.person && r.person.parent) r.person.parent.remove(r.person); delete g.remotes[pid]; if (g.passenger === pid) { g.passenger = null; g.me.model.visible = true; g.camSnap = true; } if (GR.Race.cur) delete GR.Race.cur.others[pid]; }
   function myRaceInfo() { const r = GR.Race.cur; if (!r || !r.online) return null; return { id: r.online.id, pg: Math.round(r.me.prog), f: r.me.fin }; }
   N.sendNow = function () { sendT = 1; };
   N.tick = function (dt) {
@@ -43,7 +43,7 @@
     sendT += dt;
     if (sendT >= 0.1) {
       sendT = 0;
-      room.broadcast({ t: 'p', id: room.pid, n: g.myName(), c: g.myColor(), ty: g.me.type, vc: g.me.color, s: g.me.snap(), ride: g.passenger || null, rg: myRaceInfo() });
+      room.broadcast({ t: 'p', id: room.pid, n: g.myName(), c: g.myColor(), ty: g.me.type, vc: g.me.color, s: g.me.snap(), ride: g.passenger || null, rg: myRaceInfo(), ft: GR.Foot.snap() });
     }
     const r = GR.Race.cur;
     if (room.isHost && r && r.online && r.ai.length) { aiT += dt; if (aiT > 0.1) { aiT = 0; room.broadcast({ t: 'ai', id: r.online.id, l: GR.Race.aiSnap() }); } }
@@ -66,7 +66,7 @@
       if (r.ride && !wasRide && r.ride === g.room.pid) UI.toast('🚗 ' + r.name + ' hopped in your ride!');
       if (!r.ride && wasRide === g.room.pid) UI.toast('🚪 ' + r.name + ' hopped out.');
       if (r.tag) r.tag.visible = !r.ride;
-      r.inRace = !!d.rg;
+      r.inRace = !!d.rg; GR.Foot.remote(r, d);
       const rc = GR.Race.cur; if (rc && rc.online && d.rg && d.rg.id === rc.online.id) { rc.others[d.id] = { name: r.name, prog: d.rg.pg, fin: d.rg.f }; }
     } else if (d.t === 'ai') {
       const rc = GR.Race.cur; if (rc && rc.online && !g.room.isHost && d.id === rc.online.id) GR.Race.applyAiSnap(d.l);

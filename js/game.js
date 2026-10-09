@@ -19,6 +19,7 @@
     return s;
   }
   G.save = load();
+  G.buffs = {};
   G.persist = function () {
     const s = G.save; if (G.me && !G.me.loaner && s.owned[G.me.type]) { s.owned[G.me.type].dmg = Math.round(G.me.dmg); if (!GR.Race.cur && !G.passenger) s.pos = { x: +G.me.x.toFixed(1), z: +G.me.z.toFixed(1), yaw: +G.me.yaw.toFixed(2), t: G.me.type }; }
     try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {}
@@ -88,6 +89,7 @@
   G.switchVehicle = function (type, spot) {
     if (GR.Race.cur) return; G.persist();
     G.save.cur = type; makeMe(type); spawnAt(spot || { x: G.me.x, z: G.me.z }, G.me); G.persist();
+    if (G.foot) { UI.setControlMode('foot'); if (!GR.Foot.inside && Math.hypot(G.me.x - GR.Foot.x, G.me.z - GR.Foot.z) > 30) UI.toast('🚗 Your ' + GR.VEH[type].name + ' is parked at ' + (spot && spot.name ? spot.name : 'the lot') + '.'); else if (GR.Foot.inside) UI.toast('🚗 Your ' + GR.VEH[type].name + ' is parked right outside!'); }
     if (GR.Jobs.cur && !GR.Jobs.canDo(GR.Jobs.cur.id, G.me)) GR.Jobs.cancel('Job cancelled: this ride can\u2019t do that job.');
     GR.Snd.fx('ui');
   };
@@ -110,17 +112,17 @@
   G.dent = dent;
 
   // ---------- actions ----------
-  G.nitro = function () { const v = G.me; if (G.passenger || !(v.upg.nitro > 0) || v.nitroT < 1 || v.nitro > 0) return; v.nitro = 2.5; v.nitroT = 0; GR.Snd.fx('nitro'); UI.bigText('🔥'); };
-  G.horn = function () { const v = G.me; if (v.type === 'icecream') GR.Snd.fx('jingle'); else if (v.type === 'police') { GR.Snd.fx('siren'); G.siren = 4; } else GR.Snd.fx('horn'); GR.Net.event && GR.Net.event({ e: 'horn', ty: v.type }); };
+  G.nitro = function () { const v = G.me; if (G.foot || G.passenger || !(v.upg.nitro > 0) || v.nitroT < 1 || v.nitro > 0) return; v.nitro = 2.5; v.nitroT = 0; GR.Snd.fx('nitro'); UI.bigText('🔥'); };
+  G.horn = function () { if (G.foot) return; const v = G.me; if (v.type === 'icecream') GR.Snd.fx('jingle'); else if (v.type === 'police') { GR.Snd.fx('siren'); G.siren = 4; } else GR.Snd.fx('horn'); GR.Net.event && GR.Net.event({ e: 'horn', ty: v.type }); };
   G.cycleCam = function () { G.camMode = (G.camMode + 1) % 3; UI.toast(['📷 Chase camera', '📷 Far camera', '📷 Driver camera'][G.camMode]); };
   G.resetVehicle = function (manual) {
-    if (G.passenger) return; const v = G.me;
+    if (G.passenger || (G.foot && manual)) return; const v = G.me;
     const rp = GR.Race.resetPoint(); if (rp) { v.place(rp.x, rp.z, rp.yaw, rp.y != null ? rp.y : null); if (rp.y != null && v.kind === 'plane') { v.vF = 28; v.thr = 0.6; v.air = true; } G.camSnap = true; return; }
     if (v.kind === 'boat') { if (W.height(v.x, v.z) > -0.3) spawnAt({ x: 0, z: 0 }, v); else { v.vx = v.vz = 0; v.vF = 0; } G.camSnap = true; return; }
     const r = W.nearestRoad(v.x, v.z, true); v.place(r.x, r.z, r.yaw); G.camSnap = true; if (manual) UI.toast('↺ Back on the road!');
   };
   G.fastTravel = function (s) {
-    if (GR.Race.cur || GR.Jobs.cur) return; const v = G.me;
+    if (GR.Race.cur || GR.Jobs.cur) return; GR.Foot.forceBack(); const v = G.me;
     if (v.kind === 'boat' && !G.canSpawnHere('boat', s)) { UI.toast('Boats can only go to Sparkle Marina. Switch rides at a garage first.', true); return; }
     $('fade').classList.add('on'); setTimeout(() => { spawnAt(s, v); $('fade').classList.remove('on'); UI.toast('🗺️ Welcome to ' + s.name + '!'); }, 320);
   };
@@ -131,8 +133,16 @@
     if (G.gpsPick) { if (Math.hypot(G.gpsPick.x - G.me.x, G.gpsPick.z - G.me.z) < 12) { G.gpsPick = null; return null; } return G.gpsPick; }
     return null;
   };
-  G.camYaw = () => G.camYawV || 0;
-  G.viewVeh = function () { if (G.passenger) { const r = G.remotes[G.passenger]; if (r && r.veh) return r.veh; } return G.me; };
+  G.camYaw = () => (G.foot ? GR.Foot.camYaw : G.camYawV || 0);
+  G.toggleFoot = function () {
+    if (!G.playing || UI.isOpen()) return; if (G.passenger) { G.hopOut(); return; }
+    const F = GR.Foot;
+    if (!G.foot) { F.getOut(); return; }
+    if (F.inside) { UI.toast('🚪 Walk to the glowing EXIT door to go outside.'); return; }
+    if (!F.getIn()) { if (G.me.kind === 'ground') F.callRide(); else UI.toast('Walk back to your ' + GR.VEH[G.me.type].name + ' to get in.'); }
+  };
+  const footView = { x: 0, y: 0, z: 0, yaw: 0, vF: 0, type: 'foot', kind: 'foot', L: 1, speed: () => 0 };
+  G.viewVeh = function () { if (G.foot) { const F = GR.Foot; footView.x = F.x; footView.y = F.y; footView.z = F.z; footView.yaw = F.camYaw; footView.vF = F.spd; return footView; } if (G.passenger) { const r = G.remotes[G.passenger]; if (r && r.veh) return r.veh; } return G.me; };
   G.remoteList = function () { const l = []; for (const k in G.remotes) { const r = G.remotes[k]; if (r.veh && r.veh.model.visible) l.push(r.veh); } return l; };
   G.raceVehicleOk = function (rc) {
     const v = G.me;
@@ -150,7 +160,7 @@
     G.beginRace(rc, o, null, 0);
   };
   G.beginRace = function (rc, o, online, slot) {
-    UI.close(); if (GR.Jobs.cur) GR.Jobs.cancel(); if (G.passenger) G.hopOut();
+    UI.close(); GR.Foot.forceBack(); if (GR.Jobs.cur) GR.Jobs.cancel(); if (G.passenger) G.hopOut();
     const fit = G.raceVehicleOk(rc);
     if (!fit.ok) { G.prevType = G.me.loaner ? G.prevType : G.save.cur; G.persist(); if (fit.loaner) makeMe(fit.loaner, true); else { G.save.cur = fit.swap; makeMe(fit.swap); } }
     GR.Race.start(rc, { diff: o.diff, laps: o.laps, ai: o.ai, online, slot }); G.camSnap = true;
@@ -160,11 +170,12 @@
     G.persist();
   };
   G.quitRace = function () { if (!GR.Race.cur) return; GR.Race.stop(); UI.toast('Race quit.'); };
-  G.toTitle = function () { if (GR.Race.cur) GR.Race.stop(true); if (GR.Jobs.cur) GR.Jobs.cancel(); GR.Net.leave(); G.persist(); location.href = GN.soloUrl(); };
+  G.toTitle = function () { GR.Foot.forceBack(); if (GR.Race.cur) GR.Race.stop(true); if (GR.Jobs.cur) GR.Jobs.cancel(); GR.Net.leave(); G.persist(); location.href = GN.soloUrl(); };
 
   // what can I do here?
   G.actOption = function () {
     if (!G.playing) return null;
+    if (G.foot) return GR.Foot.actOption();
     if (G.passenger) return { label: '🚪 HOP OUT', fn: G.hopOut };
     if (GR.Race.cur) return null;
     const v = G.me;
@@ -173,6 +184,8 @@
       const g = GR.SPOTS.find((s) => s.type === 'garage' && Math.hypot(s.x - v.x, s.z - v.z) < 12);
       return g ? { label: '🔧 GARAGE', fn: () => UI.garage(g) } : { label: '🛻 CALL A TOW (FREE)', fn: towMe };
     }
+    const door = v.speed() < 3 && (!air || hgt < 1.5) ? GR.Foot.nearDoor(v.x, v.z, 13) : null;
+    if (door && Math.hypot(door.door.x - v.x, door.door.z - v.z) < 8.5) return { label: '🚶 GO INTO ' + door.short, fn: () => { if (GR.Foot.getOut()) GR.Foot.enter(door); } };
     if (v.speed() < 16 && (!air || hgt < 8)) {
       let best = null, bd = 10;
       for (const m of GR.SC.markers) { const d = Math.hypot(m.s.x - v.x, m.s.z - v.z); if (d < bd) { bd = d; best = m.s; } }
@@ -183,6 +196,7 @@
         if (best.type === 'race') { const rc = GR.RACES.find((q) => q.id === best.race); return { label: '🏁 RACE: ' + rc.name, fn: () => UI.raceMenu(rc) }; }
       }
     }
+    if (door) return { label: '🚶 GO INTO ' + door.short, fn: () => { if (GR.Foot.getOut()) GR.Foot.enter(door); } };
     if (G.room && !GR.Jobs.cur && v.speed() < 4) {
       for (const k in G.remotes) { const r = G.remotes[k]; if (!r.veh || r.ride || !r.veh.model.visible || r.inRace) continue; if (Math.hypot(r.veh.x - v.x, r.veh.z - v.z) < 9 && Math.abs(r.veh.y - v.y) < 4) return { label: '🚗 HOP IN WITH ' + r.name.toUpperCase(), fn: () => G.hopIn(k) }; }
     }
@@ -210,6 +224,7 @@
   }
   const cp = new T.Vector3(), la = new T.Vector3(); let shake = 0;
   function updateCam(dt) {
+    if (G.foot) { if (look.id == null) { look.t -= dt; if (look.t <= 0) { look.off *= Math.max(0, 1 - dt * 3); look.pitch *= Math.max(0, 1 - dt * 3); } } GR.Foot.cam(dt, G.cam, look); if (G.debugCam) { const d = G.debugCam; G.cam.position.set(d[0], d[1], d[2]); G.cam.lookAt(d[3], d[4], d[5]); } if (GR.SC.sky) GR.SC.sky.position.copy(G.cam.position); return; }
     const v = G.viewVeh(); if (!v) return; const air = GR.isAir(v.type);
     let target = v.yaw; if (v.kind === 'ground' && v.vF < -3) target = v.yaw; // keep looking forward when reversing
     if (look.id == null) { look.t -= dt; if (look.t <= 0) { look.off *= Math.max(0, 1 - dt * 3); look.pitch *= Math.max(0, 1 - dt * 3); } }
@@ -233,6 +248,7 @@
   }
 
   // ---------- loop ----------
+  let chimT = 0;
   let last = performance.now(), saveT = 0, smokeT = 0, splashT = 0, routeT = 0, perfT = 0, perfN = 0, perfS = 0;
   const idle = { thr: 0, brk: 0, steer: 0, up: 0, down: 0, fwd: 0 };
   function loop(now) {
@@ -242,16 +258,21 @@
     if (G.playing && G.me) step(dt); else { const a = G.t * 0.05; G.cam.position.set(650 + Math.sin(a) * 420, 160, -50 + Math.cos(a) * 420); G.cam.lookAt(650, 40, -50); if (GR.SC.sky) GR.SC.sky.position.copy(G.cam.position); }
     GR.SC.anim.forEach((f) => f(G.t));
     GR.FX.update(dt);
-    G.renderer.render(G.scene, G.cam);
+    G.renderer.render(G.inside ? G.inside.scene : G.scene, G.cam);
     // adaptive resolution
     perfS += dt; perfN++; perfT += dt; if (perfT > 3) { const avg = perfS / perfN; if (avg > 0.034 && G.pr > 1) { G.pr = Math.max(1, G.pr - 0.25); G.renderer.setPixelRatio(G.pr); } perfT = perfS = perfN = 0; G.fps = Math.round(1 / avg); }
   }
   function step(dt) {
     const v = G.me;
     const raceFrozen = GR.Race.cur && GR.Race.cur.t < 0;
-    let inp = UI.isOpen() || raceFrozen ? idle : UI.readInput(v);
+    // snack buffs (not during races)
+    let bl = false; for (const k in G.buffs) { if (G.buffs[k] > 0) { G.buffs[k] -= dt; bl = true; } }
+    v.buff = GR.Race.cur || !bl ? null : { speed: G.buffs.speed > 0, grip: G.buffs.grip > 0, nitro: G.buffs.nitro > 0, snow: G.buffs.snow > 0, off: G.buffs.off > 0 };
+    if (G.foot) { GR.Foot.update(dt, UI.isOpen() ? null : (G.autoFoot ? G.autoFoot(dt) : UI.readInput({ kind: 'foot' })), G.t); }
+    let inp = UI.isOpen() || raceFrozen || G.foot ? idle : UI.readInput(v);
+    if (G.foot) inp = v.kind === 'ground' || v.kind === 'boat' || v.kind === 'plane' ? { brk: 1 } : idle;
     if (UI.isOpen() && v.kind === 'ground') inp = { brk: Math.abs(v.vF) > 0.5 ? 0.6 : 0 };
-    if (G.autoInput && !raceFrozen) { const a = G.autoInput(v, dt); if (a) inp = a; }
+    if (G.autoInput && !raceFrozen && !G.foot) { const a = G.autoInput(v, dt); if (a) inp = a; }
     if (raceFrozen) { inp = { brk: 1 }; if (GR.isAir(v.type)) { v.vx = v.vz = v.vy = 0; } }
     if (!G.passenger) {
       const x0 = v.x, z0 = v.z;
@@ -283,13 +304,15 @@
     }
     GR.Traffic.update(dt, v, G.remoteList(), G.t);
     for (const k in G.remotes) { const r = G.remotes[k]; if (r.veh) { r.veh.lerpRemote(dt); if (r.tag) r.tag.position.set(r.veh.x, r.veh.y + (r.veh.L > 8 ? 6 : 4.5) + (GR.isAir(r.veh.type) ? 3 : 0), r.veh.z); } }
+    GR.Foot.remoteTick(dt, G.t);
+    chimT -= dt; if (chimT <= 0 && !G.inside) { chimT = 0.4; const L = GR.PL.byId && GR.PL.byId.lodge; if (L && L.smoke && Math.hypot(G.cam.position.x - L.x, G.cam.position.z - L.z) < 400) GR.FX.smoke(L.smoke.x + (Math.random() - 0.5), L.floor + L.h + 4.8, L.smoke.z, false); }
     GR.Race.update(dt); GR.Jobs.update(dt);
     // GPS route (roads) for jobs / picks; races use their own path
     routeT -= dt; const tg = G.gpsTarget();
     if (tg && !GR.Race.cur && !GR.isAir(v.type) && v.kind !== 'boat') { const key = Math.round(tg.x) + ',' + Math.round(tg.z); if (key !== G.routeKey || routeT <= 0) { routeT = 1.5; G.routeKey = key; G.route = W.route(v.x, v.z, tg.x, tg.z); } } else G.route = null;
     updateCam(dt);
     UI.hud(G, dt);
-    const rpm = U.clamp(Math.abs(v.vF) / (v.V.vmax || 40), 0, 1); GR.Snd.engine(rpm, !G.passenger, v.kind);
+    const rpm = U.clamp(Math.abs(v.vF) / (v.V.vmax || 40), 0, 1); GR.Snd.engine(G.foot ? 0 : rpm, !G.passenger && !G.foot, v.kind);
     GR.Net.tick(dt);
     saveT += dt; if (saveT > 8) { saveT = 0; G.persist(); }
   }
@@ -303,6 +326,7 @@
     cam: (a) => { G.debugCam = a; },
     sim: (sec, h) => { h = h || 1 / 30; const n = Math.round(sec / h); for (let i = 0; i < n; i++) { G.t += h; step(h); } return __gr.state(); },
     roadTp: (name, s, back) => { const r = W.roads.find((q) => q.name === name); const p = U.pathAt(r.pi, s); G.me.place(p.x, p.z, Math.atan2(p.dx, p.dz) + (back ? Math.PI : 0)); G.camSnap = true; return p; },
+    foot: () => ({ on: !!G.foot, x: GR.Foot.x, z: GR.Foot.z, inside: GR.Foot.inside ? GR.Foot.inside.id : null }),
     state: () => ({ x: G.me.x, y: G.me.y, z: G.me.z, v: G.me.vF, type: G.me.type, dmg: G.me.dmg, money: G.save.money, air: G.me.air })
   };
   G.init();

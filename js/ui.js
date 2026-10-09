@@ -52,6 +52,7 @@
     $('bHorn').addEventListener('click', () => GR.G.horn());
     $('bCam').addEventListener('click', () => GR.G.cycleCam());
     $('bReset').addEventListener('click', () => GR.G.resetVehicle(true));
+    $('bFoot').addEventListener('click', () => GR.G.toggleFoot());
     $('bMenu').addEventListener('click', () => UI.menu());
     $('bMap').addEventListener('click', () => UI.map());
     $('minimap').addEventListener('click', () => UI.map());
@@ -69,6 +70,7 @@
       if (e.code === 'KeyT') GR.G.resetVehicle(true);
       if (e.code === 'KeyH') GR.G.horn();
       if (e.code === 'KeyM') UI.map();
+      if (e.code === 'KeyG') GR.G.toggleFoot();
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') GR.G.nitro();
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(e.code) >= 0) e.preventDefault();
     });
@@ -77,6 +79,7 @@
   };
   UI.readInput = function (veh) {
     const k = keys, kind = veh ? veh.kind : 'ground';
+    if (kind === 'foot') { const fx = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0), fy = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0); const dz = (a) => (Math.abs(a) < 0.1 ? 0 : a); return { mx: U.clamp(dz(joy.x) + fx, -1, 1), my: U.clamp(dz(joy.y) + fy, -1, 1), run: k.ShiftLeft || k.ShiftRight ? 1 : 0 }; }
     const kx = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0);
     const ky = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0);
     let jx = joy.x; jx = Math.abs(jx) < 0.08 ? 0 : Math.sign(jx) * Math.pow((Math.abs(jx) - 0.08) / 0.92, 1.25);
@@ -95,6 +98,8 @@
     return inp;
   };
   UI.setControlMode = function (kind) {
+    $('bFoot').innerHTML = kind === 'foot' ? '🚗<small>DRIVE</small>' : '🚶<small>WALK</small>'; $('bFoot').setAttribute('aria-label', kind === 'foot' ? 'Get in' : 'Get out and walk');
+    if (kind === 'foot') { $('joyHint').textContent = 'WALK'; return; }
     const air = kind === 'heli' || kind === 'balloon';
     $('bGas').querySelector('span').textContent = air ? '⬆ UP' : kind === 'plane' ? 'FASTER' : 'GAS';
     $('bBrake').querySelector('span').textContent = air ? '⬇ DOWN' : kind === 'plane' ? 'SLOWER' : 'BRAKE';
@@ -135,6 +140,7 @@
     if (G.route && G.route.length > 1) { x.strokeStyle = '#3ff0ff'; x.lineWidth = 9 / sc * 0.5; x.lineCap = 'round'; x.lineJoin = 'round'; x.beginPath(); G.route.forEach((p, i) => (i ? x.lineTo(p.x, p.z) : x.moveTo(p.x, p.z))); x.stroke(); }
     const rc = GR.Race.cur; if (rc && !rc.air) { x.strokeStyle = 'rgba(255,79,216,.85)'; x.lineWidth = 6 / sc * 0.5; x.beginPath(); rc.P.pts.forEach((p, i) => (i ? x.lineTo(p.x, p.z) : x.moveTo(p.x, p.z))); if (rc.P.closed) x.closePath(); x.stroke(); }
     const dot = (px, pz, col, r) => { x.fillStyle = col; x.beginPath(); x.arc(px, pz, r / sc, 0, 7); x.fill(); x.lineWidth = 1.5 / sc; x.strokeStyle = '#fff'; x.stroke(); };
+    if (!rc) (GR.PL.list || []).forEach((p) => { if (Math.abs(p.x - me.x) < radius * 1.5 && Math.abs(p.z - me.z) < radius * 1.5) { x.save(); x.translate(p.door.x, p.door.z); x.rotate(hd); x.font = 'bold ' + (16 / sc) + 'px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#16a34a'; x.beginPath(); x.arc(0, 0, 9 / sc, 0, 7); x.fill(); x.fillStyle = '#fff'; x.fillText(p.icon, 0, 1 / sc); x.restore(); } });
     if (!rc) GR.SC.markers.forEach((m) => { if (Math.abs(m.s.x - me.x) < radius * 1.5 && Math.abs(m.s.z - me.z) < radius * 1.5) dot(m.s.x, m.s.z, SPOTCOL[m.s.type], 5); });
     if (rc) { const t = GR.Race.nextTarget(); if (t) dot(t.x, t.z, '#ffffff', 6); rc.ai.forEach((a) => dot(a.x, a.z, '#ff3b3b', 3.5)); }
     const tg = G.gpsTarget(); if (tg) dot(tg.x, tg.z, '#3ff0ff', 6);
@@ -160,7 +166,8 @@
     if (hasN) { $('nitroBar').style.width = Math.round((me.nitro > 0 ? me.nitro / 2.5 : me.nitroT) * 100) + '%'; $('bNitro').classList.toggle('empty', me.nitroT < 1 && me.nitro <= 0); }
     if (hudT > 0.25) {
       hudT = 0;
-      $('regionN').textContent = W.REGION_NAMES[W.region(v.x, v.z)];
+      { let bh = ''; for (const k in G.buffs) if (G.buffs[k] > 0) bh += '<span>' + GR.IN.BUFFNAME[k] + ' ' + Math.ceil(G.buffs[k] / 60) + 'm</span>'; if (GR.Race.cur && bh) bh = '<span>⏸ snacks paused in races</span>'; const bc = $('buffChip'); if (bc.innerHTML !== bh) bc.innerHTML = bh; bc.classList.toggle('hidden', !bh); }
+      $('regionN').textContent = G.foot && GR.Foot.inside ? GR.Foot.inside.short : W.REGION_NAMES[W.region(v.x, v.z)];
       const act = G.actOption(); const b = $('bAct'); if (act && !UI.isOpen()) { b.textContent = act.label; b.classList.remove('hidden'); } else b.classList.add('hidden');
       // race
       const r = GR.Race.cur;
@@ -238,7 +245,7 @@
     };
     render();
   };
-  UI.dealer = function (spot) {
+  UI.dealer = function (spot, direct) {
     const G = GR.G, s = G.save; UI.dismissable = true;
     const list = GR.VEH_ORDER.filter((k) => { const V = GR.VEH[k]; if (spot.air) return GR.isAir(k); if (spot.boat) return V.kind === 'boat'; return V.kind === 'ground'; });
     const grid = () => {
@@ -259,7 +266,7 @@
         on(root, '[data-a=drive]', () => { if (k !== s.cur) G.switchVehicle(k, spot); close(); });
       });
     };
-    grid();
+    if (direct && GR.VEH[direct]) detail(direct); else grid();
   };
   UI.raceMenu = function (rc, opts) {
     const G = GR.G, s = G.save; UI.dismissable = true; opts = opts || {};
@@ -378,7 +385,7 @@
   };
   UI.help = function (fromMenu) {
     UI.dismissable = true;
-    const h = '<h2>❓ HOW TO PLAY</h2><ol class="help"><li><b>Drive:</b> drag the left stick to steer, hold <b>GAS</b> / <b>BRAKE</b> (hold brake to reverse).</li><li><b>Fly:</b> helicopter &amp; balloon use <b>UP/DOWN</b> and the stick to move. Planes: hold <b>FASTER</b> on a long road, then push the stick <b>up</b> to take off.</li><li>Drive into glowing circles: <span style="color:#16a34a">🟢 Garages</span> (repair, paint, upgrades, switch rides), <span style="color:#ca8a04">🟡 Dealers</span>, <span style="color:#0891b2">🔵 Jobs</span>, <span style="color:#db2777">🟣 Races</span>.</li><li><b>Jobs</b> earn money: taxi, pizza, cargo, limo VIP, tow, sky tours, bus.</li><li><b>Races</b> vs NPCs or friends. Don\u2019t crash 💥 — clean racing pays a bonus!</li><li>Crashes add damage. At 100% you need a tow. Repair at any garage.</li><li>Stuck or flipped into the lake? Tap <b>↺</b> to reset.</li><li>🗺️ Map: set GPS and fast travel to garages.</li></ol><div class="btnrow"><button class="btn primary" data-a="close">GOT IT!</button></div>';
+    const h = '<h2>❓ HOW TO PLAY</h2><ol class="help"><li><b>Drive:</b> drag the left stick to steer, hold <b>GAS</b> / <b>BRAKE</b> (hold brake to reverse).</li><li><b>Fly:</b> helicopter &amp; balloon use <b>UP/DOWN</b> and the stick to move. Planes: hold <b>FASTER</b> on a long road, then push the stick <b>up</b> to take off.</li><li>Drive into glowing circles: <span style="color:#16a34a">🟢 Garages</span> (repair, paint, upgrades, switch rides), <span style="color:#ca8a04">🟡 Dealers</span>, <span style="color:#0891b2">🔵 Jobs</span>, <span style="color:#db2777">🟣 Races</span>.</li><li><b>Walk around:</b> stop and tap <b>🚶 WALK</b> to get out. Buildings with a <span style="color:#16a34a">glowing green door 🚪</span> are places you can go inside: car showrooms, garages, diners, the hotel, race club, job office, gas marts, the lodge and more! Tap the pink button to talk, shop, eat snacks (small bonuses!) or start jobs and races. Tap <b>🚗 DRIVE</b> to hop back in.</li><li><b>Jobs</b> earn money: taxi, pizza, cargo, limo VIP, tow, sky tours, bus.</li><li><b>Races</b> vs NPCs or friends. Don\u2019t crash 💥 — clean racing pays a bonus!</li><li>Crashes add damage. At 100% you need a tow. Repair at any garage.</li><li>Stuck or flipped into the lake? Tap <b>↺</b> to reset.</li><li>🗺️ Map: set GPS and fast travel to garages.</li></ol><div class="btnrow"><button class="btn primary" data-a="close">GOT IT!</button></div>';
     UI.panel(h, (root) => on(root, '[data-a=close]', () => (fromMenu ? UI.menu() : close())));
   };
 })();

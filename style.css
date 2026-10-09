@@ -77,7 +77,8 @@ input { font-family: inherit; font-weight: 800; font-size: 20px; padding: 12px 1
 #bigText { position: absolute; top: 30%; left: 0; right: 0; text-align: center; font-size: 84px; color: #ffd23f; text-shadow: 0 6px 0 #9d174d, -4px -4px 0 #3a1747, 4px -4px 0 #3a1747, -4px 4px 0 #3a1747, 4px 4px 0 #3a1747; pointer-events: none; opacity: 0; transition: opacity .2s; }
 #bigText.on { opacity: 1; animation: pop .5s ease-out; }
 @keyframes pop { from { transform: scale(2); } to { transform: scale(1); } }
-#bAct { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(232px + var(--sb)); min-height: 54px; max-width: 86vw; padding: 6px 22px; border-radius: 27px; border: 3px solid #fff; background: linear-gradient(180deg,#ff8ae0,#e0359f); color: #fff; font-size: 18px; box-shadow: 0 5px 0 rgba(0,0,0,.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: pulse 1.2s infinite; }
+#bAct { position: absolute; left: 0; right: 0; margin: 0 auto; width: max-content; max-width: min(86vw, 340px); bottom: calc(232px + var(--sb)); min-height: 54px; max-width: 86vw; padding: 6px 22px; border-radius: 27px; border: 3px solid #fff; background: linear-gradient(180deg,#ff8ae0,#e0359f); color: #fff; font-size: 18px; box-shadow: 0 5px 0 rgba(0,0,0,.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: actpulse 1.2s infinite; }
+@keyframes actpulse { 50% { transform: scale(1.04); } }
 #speedo { position: absolute; left: calc(14px + var(--sl)); bottom: calc(196px + var(--sb)); background: rgba(58,23,71,.72); border: 2px solid rgba(255,255,255,.7); border-radius: 16px; padding: 3px 10px; text-align: center; pointer-events: none; min-width: 74px; }
 #speedo b { font-size: 26px; display: block; line-height: 1.05; }
 #speedo small { font-size: 11px; opacity: .85; }
@@ -141,3 +142,19 @@ input { font-family: inherit; font-weight: 800; font-size: 20px; padding: 12px 1
 .list .li { display: flex; align-items: center; gap: 8px; background: #fff; border: 2px solid #f5d0fe; border-radius: 14px; padding: 8px; margin: 6px 0; font-size: 14px; }
 .list .li .ico { font-size: 28px; }
 .list .li .grow small { display: block; color: #7a5a8a; font-size: 12px; }
+
+/* on foot + interiors */
+body.onfoot #pedRow, body.onfoot #bNitro, body.onfoot #bHorn, body.onfoot #bReset, body.onfoot #speedo, body.onfoot #nitroChip { display: none !important; }
+#bFoot { position: absolute; right: calc(10px + var(--sr)); bottom: calc(300px + var(--sb)); width: 60px; height: 60px; border-radius: 50%; border: 3px solid #fff; background: linear-gradient(180deg,#5ae07a,#1fa84a); color: #fff; font-size: 26px; line-height: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 4px 0 rgba(0,0,0,.25); padding: 0; }
+#bFoot small { font-size: 10px; font-weight: bold; letter-spacing: .5px; margin-top: 1px; }
+body.onfoot #bFoot { background: linear-gradient(180deg,#ff8ae0,#e0359f); }
+body.inside #minimap, body.inside #bMap, body.inside #gps, body.inside #dmgChip { display: none !important; }
+#buffChip { display: flex; flex-wrap: wrap; gap: 4px; }
+#buffChip.hidden { display: none; }
+#buffChip span { font-size: 12px; background: rgba(255,210,63,.9); color: #3a1747; border-radius: 10px; padding: 2px 7px; font-weight: bold; }
+.list .row { display: flex; align-items: center; gap: 8px; text-align: left; background: #fff; border: 2px solid #f5d0fe; border-radius: 14px; padding: 6px 8px; margin: 6px 0; font-size: 14px; color: var(--ink); }
+.list .row .ico { font-size: 26px; width: 34px; text-align: center; }
+.list .row .grow { flex: 1; }
+.list .row small { color: #7a5a8a; font-size: 12px; }
+.list .row .btn { min-height: 44px; font-size: 14px; padding: 4px 10px; }
+.list .row .tag { font-size: 12px; background: #4ade80; color: #fff; border-radius: 8px; padding: 2px 6px; }

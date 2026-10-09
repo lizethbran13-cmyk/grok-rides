@@ -31,7 +31,8 @@
     }
     stats() {
       const u = this.upg, e = u.engine || 0;
-      return { vmax: this.V.vmax * (1 + 0.06 * e), acc: this.V.acc * (1 + 0.1 * e), grip: this.V.grip * (1 + 0.06 * (u.grip || 0)), armor: u.armor || 0 };
+      const b = this.buff || {};
+      return { vmax: this.V.vmax * (1 + 0.06 * e) * (b.speed ? 1.05 : 1), acc: this.V.acc * (1 + 0.1 * e), grip: this.V.grip * (1 + 0.06 * (u.grip || 0)) * (b.grip ? 1.08 : 1), armor: u.armor || 0 };
     }
     speed() { return Math.hypot(this.vx, this.vz); }
     fwd() { return { x: Math.sin(this.yaw), z: Math.cos(this.yaw) }; }
@@ -58,7 +59,7 @@
         const deep = W.height(this.x, this.z) < -0.25;
         grip = deep ? V.grip : 0.15; spd = deep ? 1 : 0.1;
       } else {
-        const sk = (surf === 3 || surf === 4) ? V.snow : (surf === 0 ? 1 : V.off);
+        const bf = this.buff || {}, sk = (surf === 3 || surf === 4) ? Math.min(1, V.snow + (bf.snow ? 0.25 : 0)) : (surf === 0 ? 1 : Math.min(1, V.off + (bf.off ? 0.25 : 0)));
         grip = (SF.grip + (1 - SF.grip) * sk) * S.grip; spd = SF.spd + (1 - SF.spd) * sk;
         if (V.snow >= 1 && surf === 0) spd *= 0.85;
         if (surf === 5) { const d = W.waterDepth(this.x, this.z); spd = d > 0.6 ? 0.25 : 0.6; this.wet = d; } else this.wet = 0;
@@ -91,7 +92,7 @@
         this.yaw += yr * dt;
       }
       if (this.nitro > 0) { this.nitro -= dt; if (this.nitro <= 0) this.nitroT = 0; }
-      if (this.nitroT < 1 && this.nitro <= 0) this.nitroT = Math.min(1, this.nitroT + dt / 8);
+      if (this.nitroT < 1 && this.nitro <= 0) this.nitroT = Math.min(1, this.nitroT + dt / (this.buff && this.buff.nitro ? 4 : 8));
       this.vF = vF;
       // move
       let nx = this.x + this.vx * dt, nz = this.z + this.vz * dt;
