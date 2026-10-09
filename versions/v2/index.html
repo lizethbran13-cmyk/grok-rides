@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>/* Grok Arcade Hall of Game Records: archived old version 2.0 of grok-rides. Saves are kept separate from the newest version. */
+(function(){var P='grokOldVersion.grok-rides.v2:';try{var S=Storage.prototype,g=S.getItem,s=S.setItem,r=S.removeItem;function L(t){try{return t===window.localStorage;}catch(e){return false;}}
+S.getItem=function(k){return g.call(this,L(this)?P+k:k);};S.setItem=function(k,v){return s.call(this,L(this)?P+k:k,v);};S.removeItem=function(k){return r.call(this,L(this)?P+k:k);};}catch(e){}
+window.GROK_OLD_VERSION={repo:'grok-rides',label:'v2',ver:'2.0',prefix:P};
+function badge(){try{var d=document.createElement('div');d.id='grokOldVerBadge';d.setAttribute('style','position:fixed;left:50%;top:6px;transform:translateX(-50%);z-index:2147483647;background:rgba(20,10,43,.92);color:#ffe14d;font:bold 12px/1.3 system-ui,sans-serif;padding:6px 12px;border-radius:14px;border:2px solid #ff4fd8;box-shadow:0 2px 10px rgba(0,0,0,.4);pointer-events:none;transition:opacity .8s;text-align:center;max-width:90vw');d.textContent='\uD83D\uDCFC OLD VERSION 2.0 \u00b7 from the Hall of Game Records \u00b7 separate save';document.body.appendChild(d);setTimeout(function(){d.style.opacity='0';},6000);setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},7000);}catch(e){}}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',badge);else badge();})();</script>
+<meta name="robots" content="noindex">
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#ff4fd8" />
+  <title>GROK RIDES</title>
+  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ff4fd8'/%3E%3Cpath d='M10 38 Q14 26 24 24 L40 24 Q50 26 54 38 Z' fill='%23fff'/%3E%3Ccircle cx='20' cy='40' r='6' fill='%233a1747'/%3E%3Ccircle cx='44' cy='40' r='6' fill='%233a1747'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="topbar">
+      <div id="moneyPill" class="pill">&#128181; <b id="moneyN">$0</b></div>
+      <div id="regionPill" class="pill">&#128205; <span id="regionN"></span></div>
+      <div id="todChip" class="pill tod">☀️</div>
+      <span class="grow"></span>
+      <button id="bMenu" class="rbtn" type="button" aria-label="Menu">&#9208;</button>
+    </div>
+    <div id="leftcol">
+      <div id="dmgChip" class="chip"><span>&#128295;</span><div class="bar"><i id="dmgBar"></i></div><b id="dmgN">0%</b></div>
+      <div id="nitroChip" class="chip hidden"><span>&#128293;</span><div class="bar"><i id="nitroBar"></i></div></div>
+      <div id="raceBox" class="hidden"><div id="racePos">1st</div><div id="raceLap"></div><div id="raceTime"></div></div>
+      <div id="jobBox" class="hidden"></div>
+      <div id="buffChip" class="hidden"></div>
+      <div id="mates"></div>
+    </div>
+    <canvas id="minimap" width="236" height="236"></canvas>
+    <button id="bMap" class="rbtn small" type="button" aria-label="Map">&#128506;</button>
+    <div id="gps" class="hidden"><i id="gpsArrow">&#10148;</i><span id="gpsT"></span></div>
+    <div id="wrongWay" class="hidden">&#8634; WRONG WAY</div>
+    <div id="bigText"></div>
+    <button id="bAct" class="hidden" type="button"></button>
+    <button id="bFoot" type="button" aria-label="Get out and walk">&#128694;<small>WALK</small></button>
+    <div id="speedo"><b id="spdN">0</b><small>MPH</small><div id="thrBar" class="hidden"><i></i></div></div>
+    <div id="joy"><div id="joyBase"><div id="joyKnob"></div></div><div id="joyHint">STEER</div></div>
+    <div id="pedals">
+      <div id="smallBtns">
+        <button id="bNitro" class="sbtn hidden" type="button">&#128293;</button>
+        <button id="bHorn" class="sbtn" type="button" aria-label="Horn">&#128227;</button>
+        <button id="bCam" class="sbtn" type="button" aria-label="Camera">&#127909;</button>
+        <button id="bReset" class="sbtn" type="button" aria-label="Reset">&#8634;</button>
+      </div>
+      <div id="pedRow">
+        <div id="pbCol">
+          <button id="bDrift" class="pedal drift" type="button"><span>🌀 DRIFT</span></button>
+          <button id="bBrake" class="pedal brake" type="button"><span>BRAKE</span></button>
+        </div>
+        <button id="bGas" class="pedal gas" type="button"><span>GAS</span></button>
+      </div>
+    </div>
+    <div id="kbdhelp">W/S or &uarr;/&darr; gas/brake &middot; A/D steer &middot; Space handbrake &middot; R/F up/down (air) &middot; Shift nitro &middot; E action &middot; G get out / walk &middot; C camera &middot; T reset &middot; H horn &middot; M map</div>
+  </div>
+  <div id="hitFlash"></div>
+  <div id="toasts"></div>
+  <div id="pnl" class="screen top hidden"><div id="pnlCard" class="card"></div></div>
+  <div id="fade"></div>
+
+  <div id="scrTitle" class="screen">
+    <div class="card title">
+      <div class="logo"><span class="lg1">GROK</span><span class="lg2">RIDES</span></div>
+      <div class="cars">&#127950;&#65039;&#128641;&#127880;&#128674;</div>
+      <div class="row prof">
+        <input id="nameIn" maxlength="12" placeholder="Your name" autocomplete="off" />
+        <div id="colorRow" class="swatches"></div>
+      </div>
+      <div class="btncol">
+        <button id="bSolo" class="btn primary" type="button">PLAY</button>
+        <button id="bOnline" class="btn blue" type="button">PLAY WITH FRIENDS</button>
+        <button id="bHow" class="btn alt small" type="button">HOW TO PLAY</button>
+      </div>
+      <p class="foot">Free-roam a giant world: city, small town, desert, icy tundra and a mountain. Race, do jobs, buy cars, helicopters, planes, boats and hot air balloons!</p>
+      <a id="arcadeLink" class="foot link" href="https://lizethbran13-cmyk.github.io/grok-arcade/">&larr; Grok Arcade</a>
+    </div>
+  </div>
+
+  <div id="scrOnline" class="screen hidden">
+    <div class="card">
+      <h2>PLAY WITH FRIENDS</h2>
+      <p class="sub">2&ndash;3 players, each on their own phone. Drive around together, ride in each other&rsquo;s cars and race!</p>
+      <button id="bHost" class="btn primary" type="button">HOST A GAME</button>
+      <div class="or">or join a friend</div>
+      <div class="row join">
+        <input id="codeIn" maxlength="5" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+        <button id="bJoin" class="btn blue" type="button">JOIN</button>
+      </div>
+      <div id="onlineMsg" class="msg"></div>
+      <button id="bOnlineBack" class="btn alt small" type="button">BACK</button>
+    </div>
+  </div>
+
+  <div id="loading" class="screen hidden"><div class="card"><h2>Building the world&hellip;</h2><div class="spin"></div></div></div>
+
+  <script src="three.min.js"></script>
+  <script src="peerjs.min.js"></script>
+  <script src="grok-net.js"></script>
+  <script src="js/util.js?v=5"></script>
+  <script src="js/world.js?v=5"></script>
+  <script src="js/data.js?v=5"></script>
+  <script src="js/models.js?v=5"></script>
+  <script src="js/places.js?v=5"></script>
+  <script src="js/buildings.js?v=5"></script>
+  <script src="js/scenery.js?v=5"></script>
+  <script src="js/fx.js?v=5"></script>
+  <script src="js/audio.js?v=5"></script>
+  <script src="js/vehicle.js?v=5"></script>
+  <script src="js/traffic.js?v=5"></script>
+  <script src="js/race.js?v=5"></script>
+  <script src="js/jobs.js?v=5"></script>
+  <script src="js/ui.js?v=5"></script>
+  <script src="js/interiors.js?v=5"></script>
+  <script src="js/interiors2.js?v=5"></script>
+  <script src="js/fun.js?v=5"></script>
+  <script src="js/daynight.js?v=5"></script>
+  <script src="js/net.js?v=5"></script>
+  <script src="js/game.js?v=5"></script>
+</body>
+</html>
