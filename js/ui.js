@@ -14,6 +14,7 @@
     setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 450); }, 3200);
   };
   let bigT = 0; UI.bigText = function (s) { const b = $('bigText'); b.textContent = s; b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); clearTimeout(bigT); bigT = setTimeout(() => b.classList.remove('on'), 900); };
+  let flashT = 0; UI.hitFlash = function (k) { const f = $('hitFlash'); if (!f) return; f.style.opacity = String(Math.min(0.75, k * 0.75)); clearTimeout(flashT); flashT = setTimeout(() => { f.style.opacity = '0'; }, 120); };
   UI.isOpen = () => !$('pnl').classList.contains('hidden');
   UI.panel = function (html, bind) { $('pnlCard').innerHTML = html; $('pnl').classList.remove('hidden'); $('pnlCard').scrollTop = 0; if (bind) bind($('pnlCard')); GR.Snd.fx('ui'); };
   UI.close = function () { $('pnl').classList.add('hidden'); $('pnlCard').innerHTML = ''; UI.onClose && UI.onClose(); UI.onClose = null; };
@@ -22,12 +23,12 @@
   // ---------- 3D thumbnails ----------
   let tr = null, ts, tc; const thumbs = {};
   UI.thumb = function (type, color) {
-    const key = type + color; if (thumbs[key]) return thumbs[key];
+    const key = type + color + ((GR.G && GR.G.save && (GR.G.save.owned[type] || {}).rim) || ''); if (thumbs[key]) return thumbs[key];
     try {
       if (!tr) { tr = new T.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); tr.setSize(240, 150); tr.setPixelRatio(1); ts = new T.Scene(); ts.add(new T.HemisphereLight(0xffffff, 0x8888aa, 0.9)); const d = new T.DirectionalLight(0xffffff, 0.8); d.position.set(3, 5, 4); ts.add(d); tc = new T.PerspectiveCamera(30, 240 / 150, 0.1, 200); }
-      const m = GR.M.vehicle(type, color);
-      if (!UI._tm) { UI._tm = GR.M.mat.clone(); UI._tm.envMap = null; UI._tw = GR.M.matWheel.clone(); UI._tw.envMap = null; } // envMap lives in the main GL context
-      m.traverse((o) => { if (o.material === GR.M.mat) o.material = UI._tm; else if (o.material === GR.M.matWheel) o.material = UI._tw; });
+      const o2 = GR.G && GR.G.save && GR.G.save.owned[type] || {}; const m = GR.M.vehicle(type, color, { noNight: true, rim: o2.rim });
+      if (!UI._tm) { UI._tm = GR.M.mat.clone(); UI._tm.envMap = null; UI._tw = GR.M.matWheel.clone(); UI._tw.envMap = null; UI._tg = GR.M.matGlass.clone(); UI._tg.envMap = null; UI._tg.metalness = 0.2; UI._tg.roughness = 0.25; } // envMap lives in the main GL context
+      m.traverse((o) => { if (o.material === GR.M.mat) o.material = UI._tm; else if (o.material === GR.M.matWheel) o.material = UI._tw; else if (o.material === GR.M.matGlass) o.material = UI._tg; });
       ts.add(m);
       const box = new T.Box3().setFromObject(m), c = box.getCenter(new T.Vector3()), s = box.getSize(new T.Vector3()), r = Math.max(s.x, s.y, s.z);
       tc.position.set(c.x + r * 1.25, c.y + r * 0.6, c.z + r * 1.55); tc.lookAt(c); tr.render(ts, tc);
@@ -50,7 +51,7 @@
     jz.addEventListener('pointermove', (e) => { if (e.pointerId === joy.id) upd(e); });
     const end = (e) => { if (e.pointerId !== joy.id) return; joy.id = null; joy.x = joy.y = 0; knob.style.transform = ''; };
     ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) => jz.addEventListener(t, end));
-    pedal($('bGas'), 'gas'); pedal($('bBrake'), 'brake');
+    pedal($('bGas'), 'gas'); pedal($('bBrake'), 'brake'); pedal($('bDrift'), 'hand');
     $('bNitro').addEventListener('pointerdown', (e) => { e.preventDefault(); GR.G.nitro(); });
     $('bHorn').addEventListener('click', () => GR.G.horn());
     $('bCam').addEventListener('click', () => GR.G.cycleCam());
@@ -88,9 +89,9 @@
   };
   UI.resetInput = function (touchOnly) {
     if (!touchOnly) for (const k in keys) keys[k] = false;
-    inp._gas = inp._brake = 0; joy.id = null; joy.x = joy.y = 0;
+    inp._gas = inp._brake = inp._hand = 0; joy.id = null; joy.x = joy.y = 0;
     const kn = $('joyKnob'); if (kn) kn.style.transform = '';
-    ['bGas', 'bBrake'].forEach((id) => { const e = $(id); if (e) e.classList.remove('on'); });
+    ['bGas', 'bBrake', 'bDrift'].forEach((id) => { const e = $(id); if (e) e.classList.remove('on'); });
     inp.thr = inp.brk = inp.steer = inp.up = inp.down = inp.fwd = inp.hand = 0;
   };
   UI.readInput = function (veh) {
@@ -100,7 +101,7 @@
     const ky = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0);
     let jx = joy.x; jx = Math.abs(jx) < 0.08 ? 0 : Math.sign(jx) * Math.pow((Math.abs(jx) - 0.08) / 0.92, 1.25);
     let jy = joy.y; jy = Math.abs(jy) < 0.12 ? 0 : Math.sign(jy) * (Math.abs(jy) - 0.12) / 0.88;
-    inp.steer = U.clamp(jx + kx, -1, 1); inp.hand = k.Space && kind === 'ground' ? 1 : 0;
+    inp.steer = U.clamp(jx + kx, -1, 1); inp.hand = (k.Space || inp._hand) && kind === 'ground' ? 1 : 0;
     if (kind === 'heli' || kind === 'balloon') {
       inp.up = (inp._gas || k.KeyR || k.Space || k.PageUp) ? 1 : 0; inp.down = (inp._brake || k.KeyF || k.ControlLeft || k.PageDown) ? 1 : 0;
       inp.fwd = U.clamp(jy + ky, -1, 1); inp.thr = 0; inp.brk = 0;
@@ -179,8 +180,10 @@
     if (v.kind === 'plane') $('thrBar').firstElementChild.style.width = Math.round(v.thr * 100) + '%';
     const me = G.me, d = Math.round(me.dmg); $('dmgBar').style.width = d + '%'; $('dmgBar').style.backgroundPosition = (-d * 1.2) + 'px 0'; $('dmgN').textContent = d >= 100 ? 'TOW' : d + '%';
     $('dmgChip').classList.toggle('wreck', d >= 100);
-    const hasN = (me.upg.nitro || 0) > 0 && !G.passenger; $('nitroChip').classList.toggle('hidden', !hasN); $('bNitro').classList.toggle('hidden', !hasN);
-    if (hasN) { $('nitroBar').style.width = Math.round((me.nitro > 0 ? me.nitro / 2.5 : me.nitroT) * 100) + '%'; $('bNitro').classList.toggle('empty', me.nitroT < 1 && me.nitro <= 0); }
+    // boost tank: everyone has nitro now (fills by itself, faster when drifting / jumping)
+    const hasN = !G.passenger && !G.foot && me.kind !== 'balloon'; $('nitroChip').classList.toggle('hidden', !hasN); $('bNitro').classList.toggle('hidden', !hasN);
+    if (hasN) { const full = me.nitro > 0 ? me.nitro / Math.max(0.1, me.nitroMax || me.nitro) : me.boost; $('nitroBar').style.width = Math.round(full * 100) + '%'; $('nitroChip').classList.toggle('firing', me.nitro > 0); $('bNitro').classList.toggle('empty', me.nitro <= 0 && me.boost < 0.2); $('bNitro').classList.toggle('ready', me.nitro <= 0 && me.boost >= 0.999); }
+    $('bDrift').classList.toggle('hidden', G.foot || G.passenger || me.kind !== 'ground');
     if (hudT > 0.25) {
       hudT = 0;
       { let bh = ''; for (const k in G.buffs) if (G.buffs[k] > 0) bh += '<span>' + GR.IN.BUFFNAME[k] + ' ' + Math.ceil(G.buffs[k] / 60) + 'm</span>'; if (GR.Race.cur && bh) bh = '<span>⏸ snacks paused in races</span>'; const bc = $('buffChip'); if (bc.innerHTML !== bh) bc.innerHTML = bh; bc.classList.toggle('hidden', !bh); }
@@ -241,12 +244,17 @@
       h += '<img class="big3d" src="' + UI.thumb(s.cur, cur.color) + '" alt="">';
       h += '<div class="sub"><b>' + esc(GR.VEH[s.cur].icon + ' ' + GR.VEH[s.cur].name) + '</b> · Damage ' + Math.round(me.dmg) + '%</div>';
       h += '<div class="btnrow"><button class="btn green small" data-a="repair" ' + (me.dmg < 1 ? 'disabled' : '') + '>' + (me.dmg < 1 ? 'NO DAMAGE ✨' : 'REPAIR ' + (cost ? U.fmtMoney(cost) : '(FREE)')) + '</button></div>';
-      h += '<div class="seg"><button data-t="cars" class="' + (tab === 'cars' ? 'on' : '') + '">MY RIDES</button><button data-t="paint" class="' + (tab === 'paint' ? 'on' : '') + '">PAINT</button><button data-t="upg" class="' + (tab === 'upg' ? 'on' : '') + '">UPGRADES</button></div>';
+      if (spot.noCars && (tab === 'cars' || tab === 'upg')) tab = 'paint';
+      h += '<div class="seg">' + (spot.noCars ? '' : '<button data-t="cars" class="' + (tab === 'cars' ? 'on' : '') + '">MY RIDES</button>') + '<button data-t="paint" class="' + (tab === 'paint' ? 'on' : '') + '">PAINT</button><button data-t="style" class="' + (tab === 'style' ? 'on' : '') + '">STYLE</button>' + (spot.noCars ? '' : '<button data-t="upg" class="' + (tab === 'upg' ? 'on' : '') + '">UPGRADES</button>') + '</div>';
       if (tab === 'cars') {
         h += '<div class="vgrid">'; GR.VEH_ORDER.forEach((k) => { if (!s.owned[k]) return; const V = GR.VEH[k], ok = G.canSpawnHere(k, spot); h += '<button class="vcard ' + (k === s.cur ? 'on' : '') + (ok ? '' : ' cant') + '" data-v="' + k + '"><img src="' + UI.thumb(k, s.owned[k].color) + '" alt=""><b>' + esc(V.name) + '</b><small>' + (k === s.cur ? 'DRIVING' : ok ? 'TAP TO SWITCH' : (V.kind === 'boat' ? 'Only at the Marina' : 'Not here')) + '</small></button>'; }); h += '</div>';
         h += '<p class="sub">Buy more rides at <b>Grok Motors</b> (city), <b>Sky Field</b> (aircraft) and the <b>Marina</b> (boats).</p>';
       } else if (tab === 'paint') {
         h += '<p class="sub">Pick a color ($100). Your ride: ' + esc(GR.VEH[s.cur].name) + '</p><div class="swatches" style="margin:8px 0">'; GR.PAINTS.forEach((c) => { h += '<button data-c="' + c + '" class="' + (cur.color === c ? 'on' : '') + '" style="background:' + c + '"></button>'; }); h += '</div>';
+      } else if (tab === 'style') {
+        const own = cur.own || {}, kind = GR.VEH[s.cur].kind, wheels = kind === 'ground';
+        if (wheels) { h += '<h3>🛞 RIMS</h3><div class="stylegrid">'; for (const k in GR.M.RIMS) { const R = GR.M.RIMS[k], has = !R.price || own['rim:' + k], on = (cur.rim || 'stock') === k; h += '<button class="stylebtn' + (on ? ' on' : '') + '" data-rim="' + k + '"><i class="rimdot" style="background:' + R.c[0] + '"></i><b>' + esc(R.name) + '</b><small>' + (on ? 'ON' : has ? 'OWNED' : U.fmtMoney(R.price)) + '</small></button>'; } h += '</div>'; }
+        h += '<h3>✨ UNDERGLOW</h3><div class="stylegrid">'; for (const k in GR.M.GLOWS) { const L = GR.M.GLOWS[k], has = !L.price || own['glow:' + k], on = (cur.glow || 'none') === k; h += '<button class="stylebtn' + (on ? ' on' : '') + '" data-glow="' + k + '"><i class="rimdot" style="background:' + (L.c || '#334155') + '"></i><b>' + esc(L.name) + '</b><small>' + (on ? 'ON' : has ? 'OWNED' : U.fmtMoney(L.price)) + '</small></button>'; } h += '</div><p class="sub">Underglow shines brightest at night 🌙</p>';
       } else {
         for (const k in GR.UPG) { const u = GR.UPG[k], lv = (cur.upg || {})[k] || 0, max = lv >= u.max, price = max ? 0 : Math.round(u.cost[lv] * G.priceScale(s.cur)); let pips = ''; for (let i = 0; i < u.max; i++) pips += '<i class="' + (i < lv ? 'on' : '') + '"></i>'; h += '<div class="upg"><span style="font-size:26px">' + u.icon + '</span><div class="grow"><b>' + u.name + '</b> <span class="pips">' + pips + '</span><small>' + u.desc + '</small></div><button class="btn gold" data-u="' + k + '" ' + (max || s.money < price ? 'disabled' : '') + '>' + (max ? 'MAX' : U.fmtMoney(price)) + '</button></div>'; }
       }
@@ -257,6 +265,8 @@
         on(root, '[data-a=repair]', () => { G.repair(); render(); });
         on(root, '[data-v]', (e) => { const k = e.dataset.v; if (k === s.cur) return; if (!G.canSpawnHere(k, spot)) { UI.toast(GR.VEH[k].kind === 'boat' ? 'Boats can only be picked up at Sparkle Marina.' : 'Can\u2019t switch here.', true); return; } G.switchVehicle(k, spot); render(); });
         on(root, '[data-c]', (e) => { G.paint(e.dataset.c); render(); });
+        on(root, '[data-rim]', (e) => { G.style('rim', e.dataset.rim); render(); });
+        on(root, '[data-glow]', (e) => { G.style('glow', e.dataset.glow); render(); });
         on(root, '[data-u]', (e) => { G.upgrade(e.dataset.u); render(); });
       });
     };
@@ -386,12 +396,14 @@
     h += '<div class="btncol"><button class="btn primary" data-a="close">RESUME</button>';
     if (GR.Race.cur) h += '<button class="btn red" data-a="quitrace">QUIT RACE</button>';
     if (GR.Jobs.cur) h += '<button class="btn red" data-a="quitjob">CANCEL JOB</button>';
-    h += '<button class="btn blue" data-a="map">🗺️ MAP & FAST TRAVEL</button><button class="btn alt small" data-a="stats">🏆 MY STATS</button><button class="btn alt small" data-a="help">❓ HOW TO PLAY</button><button class="btn alt small" data-a="snd">' + (GR.Snd.muted ? '🔇 SOUND OFF' : '🔊 SOUND ON') + '</button><button class="btn alt small" data-a="leave">' + (G.room ? 'LEAVE ONLINE GAME' : 'TITLE SCREEN') + '</button></div>';
+    h += '<button class="btn blue" data-a="map">🗺️ MAP & FAST TRAVEL</button><button class="btn gold small" data-a="coll">🌟 COLLECTIONS</button><button class="btn alt small" data-a="stats">🏆 MY STATS</button><button class="btn alt small" data-a="help">❓ HOW TO PLAY</button><button class="btn alt small" data-a="snd">' + (GR.Snd.muted ? '🔇 SOUND OFF' : '🔊 SOUND ON') + '</button><button class="btn alt small" id="bGfx" data-a="gfx">' + (G.gfx === 'low' ? '🎨 GRAPHICS: LOW (faster)' : '🎨 GRAPHICS: HIGH') + ' · tap to switch</button><button class="btn alt small" data-a="leave">' + (G.room ? 'LEAVE ONLINE GAME' : 'TITLE SCREEN') + '</button></div>';
     UI.panel(h, (root) => {
       on(root, '[data-a=close]', close); on(root, '[data-a=map]', () => UI.map()); on(root, '[data-a=help]', () => UI.help(true));
       on(root, '[data-a=quitrace]', () => { close(); G.quitRace(); }); on(root, '[data-a=quitjob]', () => { close(); GR.Jobs.cancel('Job cancelled.'); });
       on(root, '[data-a=snd]', () => { GR.Snd.setMute(!GR.Snd.muted); UI.menu(); });
+      on(root, '[data-a=gfx]', () => { G.setQuality(G.gfx === 'low' ? 'high' : 'low'); UI.toast(G.gfx === 'low' ? '🎨 Graphics: LOW — smoother on older phones' : '🎨 Graphics: HIGH — full detail'); UI.menu(); });
       on(root, '[data-a=leave]', () => { close(); G.toTitle(); });
+      on(root, '[data-a=coll]', () => UI.collections());
       on(root, '[data-a=stats]', () => {
         const owned = Object.keys(s.owned).length, st = s.stats;
         let x = '<h2>🏆 MY STATS</h2><div class="list">' + [['💵', 'Money earned', U.fmtMoney(st.earned || 0)], ['🏁', 'Races / wins', (st.races || 0) + ' / ' + (st.wins || 0)], ['🧰', 'Jobs done', st.jobs || 0], ['🚗', 'Rides owned', owned + ' / ' + GR.VEH_ORDER.length], ['💥', 'Crashes', st.crashes || 0], ['🛣️', 'Distance', ((st.dist || 0) / 1609).toFixed(1) + ' miles']].map((r) => '<div class="li"><span class="ico">' + r[0] + '</span><div class="grow">' + r[1] + '</div><b>' + r[2] + '</b></div>').join('') + '</div>';
@@ -400,9 +412,21 @@
       });
     });
   };
+  UI.collections = function () {
+    const G = GR.G, s = G.save, F = GR.Fun, st = s.stickers || {}, IN = GR.IN;
+    let h = '<h2>🌟 COLLECTIONS</h2><div class="list">';
+    h += '<div class="li"><span class="ico">🌟</span><div class="grow">Grok Stars <small>(hidden all over the map + inside buildings)</small></div><b>' + F.starCount() + ' / ' + F.starTotal() + '</b></div>';
+    h += '<div class="li"><span class="ico">📸</span><div class="grow">Photo spots</div><b>' + Object.keys(s.photos || {}).length + ' / ' + F.photos.length + '</b></div>';
+    h += '<div class="li"><span class="ico">🚀</span><div class="grow">Stunt ramps jumped <small>(best jump ' + ((s.stunts || {}).best || 0) + ' m)</small></div><b>' + Object.keys(s.ramps || {}).length + ' / ' + GR.W.ramps.length + '</b></div>';
+    h += '<div class="li"><span class="ico">🚪</span><div class="grow">Buildings visited</div><b>' + Object.keys(s.visited || {}).length + ' / ' + (GR.PL.list.length + GR.PL.gen.length) + '</b></div>';
+    h += '<div class="li"><span class="ico">🚔</span><div class="grow">Robbers caught · 🏁 street races won</div><b>' + (s.chases || 0) + ' · ' + (s.streetWins || 0) + '</b></div></div>';
+    h += '<h3>STICKER BOOK</h3><div class="stickers">' + Object.keys(IN.STICKERS).map((k) => '<span class="stk' + (st[k] ? ' on' : '') + '" title="' + esc(IN.STICKERS[k].name) + '">' + (st[k] ? IN.STICKERS[k].icon : '❔') + '</span>').join('') + '</div>';
+    h += '<p class="sub">Shops all over town sell stickers. Claw machines give them away!</p><div class="btnrow"><button class="btn primary" data-a="star">🌟 GPS TO A STAR</button><button class="btn alt" data-a="close">BACK</button></div>';
+    UI.panel(h, (r) => { on(r, '[data-a=close]', () => UI.menu()); on(r, '[data-a=star]', () => { close(); F.gpsStar(); }); });
+  };
   UI.help = function (fromMenu) {
     UI.dismissable = true;
-    const h = '<h2>❓ HOW TO PLAY</h2><ol class="help"><li><b>Drive:</b> drag the left stick to steer, hold <b>GAS</b> / <b>BRAKE</b> (hold brake to reverse).</li><li><b>Fly:</b> helicopter &amp; balloon use <b>UP/DOWN</b> and the stick to move. Planes: hold <b>FASTER</b> on a long road, then push the stick <b>up</b> to take off.</li><li>Drive into glowing circles: <span style="color:#16a34a">🟢 Garages</span> (repair, paint, upgrades, switch rides), <span style="color:#ca8a04">🟡 Dealers</span>, <span style="color:#0891b2">🔵 Jobs</span>, <span style="color:#db2777">🟣 Races</span>.</li><li><b>Walk around:</b> stop and tap <b>🚶 WALK</b> to get out. Buildings with a <span style="color:#16a34a">glowing green door 🚪</span> are places you can go inside: car showrooms, garages, diners, the hotel, race club, job office, gas marts, the lodge and more! Tap the pink button to talk, shop, eat snacks (small bonuses!) or start jobs and races. Tap <b>🚗 DRIVE</b> to hop back in.</li><li><b>Jobs</b> earn money: taxi, pizza, cargo, limo VIP, tow, sky tours, bus.</li><li><b>Races</b> vs NPCs or friends. Don\u2019t crash 💥 — clean racing pays a bonus!</li><li>Crashes add damage. At 100% you need a tow. Repair at any garage.</li><li>Stuck or flipped into the lake? Tap <b>↺</b> to reset.</li><li>🗺️ Map: set GPS and fast travel to garages.</li></ol><div class="btnrow"><button class="btn primary" data-a="close">GOT IT!</button></div>';
+    const h = '<h2>❓ HOW TO PLAY</h2><ol class="help"><li><b>Drive:</b> drag the left stick to steer, hold <b>GAS</b> / <b>BRAKE</b> (hold brake to reverse).</li><li><b>Fly:</b> helicopter &amp; balloon use <b>UP/DOWN</b> and the stick to move. Planes: hold <b>FASTER</b> on a long road, then push the stick <b>up</b> to take off.</li><li>Drive into glowing circles: <span style="color:#16a34a">🟢 Garages</span> (repair, paint, upgrades, switch rides), <span style="color:#ca8a04">🟡 Dealers</span>, <span style="color:#0891b2">🔵 Jobs</span>, <span style="color:#db2777">🟣 Races</span>.</li><li><b>Walk around:</b> stop and tap <b>🚶 WALK</b> to get out. Buildings with a <span style="color:#16a34a">glowing green door 🚪</span> are places you can go inside: car showrooms, garages, diners, the hotel, race club, job office, gas marts, the lodge and more! Tap the pink button to talk, shop, eat snacks (small bonuses!) or start jobs and races. Tap <b>🚗 DRIVE</b> to hop back in.</li><li><b>NEW:</b> hold <b>DRIFT</b> to slide round corners, tap <b>🔥</b> for nitro (the tank fills faster when you drift or jump). Hit the yellow <b>stunt ramps</b> on the Grok Highway, hunt <b>🌟 Grok Stars</b>, snap pics at <b>📸 photo spots</b>, and say yes to <b>🚨 police chases</b> and <b>🏁 street races</b> when they pop up!</li><li><b>Every building with a glowing green door can be visited</b>: cafes, toy shops, arcades, pet shops, homes, offices, igloos, the lighthouse…</li><li><b>Jobs</b> earn money: taxi, pizza, cargo, limo VIP, tow, sky tours, bus.</li><li><b>Races</b> vs NPCs or friends. Don\u2019t crash 💥 — clean racing pays a bonus!</li><li>Crashes add damage. At 100% you need a tow. Repair at any garage.</li><li>Stuck or flipped into the lake? Tap <b>↺</b> to reset.</li><li>🗺️ Map: set GPS and fast travel to garages.</li></ol><div class="btnrow"><button class="btn primary" data-a="close">GOT IT!</button></div>';
     UI.panel(h, (root) => on(root, '[data-a=close]', () => (fromMenu ? UI.menu() : close())));
   };
 })();

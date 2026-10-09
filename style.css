@@ -158,3 +158,49 @@ body.inside #minimap, body.inside #bMap, body.inside #gps, body.inside #dmgChip 
 .list .row small { color: #7a5a8a; font-size: 12px; }
 .list .row .btn { min-height: 44px; font-size: 14px; padding: 4px 10px; }
 .list .row .tag { font-size: 12px; background: #4ade80; color: #fff; border-radius: 8px; padding: 2px 6px; }
+
+/* ===== v5 polish: glassy cartoon HUD ===== */
+.pill { background: linear-gradient(180deg, rgba(76,32,104,.82), rgba(46,16,66,.86)); border: 2px solid rgba(255,255,255,.9); box-shadow: 0 3px 0 rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.35); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+#moneyPill b { font-size: 17px; text-shadow: 0 2px 0 rgba(0,0,0,.3); }
+#regionPill { max-width: 34vw; text-overflow: ellipsis; }
+.pill.tod { font-size: 13px; padding: 0 9px; }
+.chip { background: linear-gradient(180deg, rgba(76,32,104,.78), rgba(46,16,66,.82)); border: 2px solid rgba(255,255,255,.75); box-shadow: 0 2px 0 rgba(0,0,0,.15); }
+.chip .bar { height: 11px; box-shadow: inset 0 1px 2px rgba(0,0,0,.35); }
+#nitroChip.firing { border-color: #ffd23f; box-shadow: 0 0 12px rgba(255,160,40,.9); }
+#nitroChip.firing #nitroBar { background: linear-gradient(90deg,#3ff0ff,#ff4fd8) !important; }
+#speedo { width: 86px; height: 86px; min-width: 0; padding: 0; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 3px solid #fff; background: radial-gradient(circle at 50% 40%, rgba(90,40,120,.9), rgba(30,10,45,.92)); box-shadow: 0 4px 0 rgba(0,0,0,.2), inset 0 0 0 5px rgba(255,79,216,.35); }
+#speedo b { font-size: 28px; color: #fff; text-shadow: 0 2px 0 #9d174d; }
+#speedo small { font-size: 10px; letter-spacing: 1px; color: #ffd6f5; }
+.sbtn { border: 2px solid #fff; background: linear-gradient(180deg, rgba(90,40,120,.85), rgba(46,16,66,.9)); box-shadow: 0 3px 0 rgba(0,0,0,.22); }
+#bNitro { width: 56px; height: 56px; font-size: 24px; background: radial-gradient(circle at 40% 30%, #ffcf6b, #ff6a1f 60%, #d0310f); border: 3px solid #fff; }
+#bNitro.ready { animation: nready 1s infinite; }
+@keyframes nready { 50% { box-shadow: 0 0 0 6px rgba(255,170,40,.45), 0 3px 0 rgba(0,0,0,.22); } }
+.pedal { position: relative; overflow: hidden; }
+.pedal::after { content: ''; position: absolute; left: 8%; right: 8%; top: 6px; height: 34%; border-radius: 18px; background: linear-gradient(180deg, rgba(255,255,255,.45), rgba(255,255,255,0)); pointer-events: none; }
+#pbCol { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.pedal.drift { width: 80px; height: 52px; border-radius: 18px; font-size: 13px; background: linear-gradient(180deg,#7dd3fc,#2563eb); }
+.pedal.drift.on { filter: brightness(1.25); }
+.evbox { position: absolute; top: calc(56px + var(--st)); left: 50%; transform: translateX(-50%); min-width: 170px; max-width: 64vw; text-align: center; background: linear-gradient(180deg, rgba(220,38,38,.92), rgba(140,16,40,.92)); border: 3px solid #fff; border-radius: 18px; padding: 5px 12px; font-size: 15px; line-height: 1.25; box-shadow: 0 4px 0 rgba(0,0,0,.2); pointer-events: none; }
+.evbox small { font-size: 12px; opacity: .95; }
+.driftbox { position: absolute; top: 24%; left: 50%; transform: translateX(-50%) rotate(-4deg); font-size: 26px; color: #3ff0ff; text-shadow: 0 3px 0 #1e3a8a, -2px -2px 0 #0b1026, 2px 2px 0 #0b1026; pointer-events: none; white-space: nowrap; }
+#bigText { font-size: clamp(34px, 11vw, 84px); padding: 0 8px; line-height: 1.05; }
+#hitFlash { position: fixed; inset: 0; z-index: 9; pointer-events: none; opacity: 0; transition: opacity .25s ease-out; background: radial-gradient(ellipse at center, rgba(255,0,0,0) 45%, rgba(255,30,60,.85) 100%); }
+.toast { background: linear-gradient(180deg, rgba(76,32,104,.94), rgba(46,16,66,.94)); box-shadow: 0 4px 0 rgba(0,0,0,.2); }
+#bAct { background: linear-gradient(180deg,#ff8ae0,#e0359f); box-shadow: 0 5px 0 #9d174d, 0 0 18px rgba(255,79,216,.55); }
+.card { border-radius: 28px; background: linear-gradient(180deg,#fffdf8,#fff5fb); }
+.stylegrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 6px 0; }
+.stylebtn { border-radius: 14px; border: 3px solid #f5d0fe; background: #fff; color: var(--ink); padding: 6px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; min-height: 76px; }
+.stylebtn.on { border-color: #ff4fd8; background: #fff0fa; }
+.stylebtn small { color: #7a5a8a; font-size: 11px; }
+.rimdot { width: 26px; height: 26px; border-radius: 50%; border: 4px solid #1f2937; box-shadow: inset 0 0 0 3px rgba(255,255,255,.6); }
+.stickers { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin: 6px 0; }
+.stk { font-size: 24px; background: #f3e8ff; border-radius: 10px; padding: 4px 0; opacity: .45; }
+.stk.on { background: #fff7c2; opacity: 1; box-shadow: 0 0 0 2px #ffd23f; }
+.polaroid { background: #fff; padding: 10px 10px 4px; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.25); transform: rotate(-2deg); margin: 8px auto 12px; width: min(320px, 92%); }
+.polaroid img { width: 100%; display: block; border-radius: 2px; }
+.polaroid .cap { font-size: 14px; color: #3a1747; padding: 6px 0 4px; }
+body.inside .evbox, body.inside .driftbox { display: none !important; }
+body.onfoot #bDrift { display: none !important; }
+#smallBtns { gap: 6px; align-items: center; }
+#smallBtns .sbtn { width: 42px; height: 42px; font-size: 18px; }
+#smallBtns #bNitro { width: 52px; height: 52px; font-size: 22px; }

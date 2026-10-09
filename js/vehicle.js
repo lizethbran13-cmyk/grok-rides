@@ -10,7 +10,8 @@
       o = o || {};
       this.type = type; this.V = GR.VEH[type]; this.kind = this.V.kind; this.color = color || this.V.color || '#ff4fd8';
       this.upg = o.upg || {}; this.pace = o.pace || 1; this.corner = 1; this.ai = !!o.ai; this.remote = !!o.remote;
-      this.model = M.vehicle(type, this.color); this.L = this.model.userData.L; this.Wd = this.model.userData.W;
+      this.model = M.vehicle(type, this.color, { rim: o.rim, glow: o.glow, beam: !!o.beam }); this.L = this.model.userData.L; this.Wd = this.model.userData.W;
+      this.boost = o.boost != null ? o.boost : 0.6; this.sp = { p: 0, r: 0, y: 0, vp: 0, vr: 0, vy: 0 }; this.driftT = 0; this.gripK = 1;
       this.x = 0; this.y = 0; this.z = 0; this.yaw = 0; this.vx = 0; this.vz = 0; this.vy = 0; this.vF = 0; this.st = 0; this.pitch = 0; this.roll = 0;
       this.dmg = o.dmg || 0; this.air = false; this.thr = 0; this.nitro = 0; this.nitroT = 1; this.lift = 0; this.alt = 0; this.wet = 0; this.hits = 0; this.onGround = true;
       this.lastHit = 0; this.ev = []; this.surf = 0; this.rpm = 0;
@@ -21,7 +22,7 @@
     }
     place(x, z, yaw, y) {
       this.x = x; this.z = z; this.yaw = yaw || 0; this.vx = this.vz = this.vy = this.vF = 0;
-      const gh = this.groundH(x, z); this.y = y != null ? Math.max(y, gh) : gh; this.air = this.y > gh + 0.5; this.thr = 0; this.lift = 0; this.syncModel(0);
+      const gh = this.groundH(x, z); this.y = y != null ? Math.max(y, gh) : gh; this.air = this.y > gh + 0.5; this.thr = 0; this.lift = 0; this.yb = null; this.side = null; this.nitro = 0; this.syncModel(0);
     }
     groundH(x, z) {
       const h = W.gy(x, z);
@@ -47,7 +48,20 @@
         else this.stepBalloon(h, inp);
         this.collideWorld();
       }
+      this.tickBoost(dt);
       this.syncModel(dt, inp);
+    }
+    // NITRO for everyone: a boost tank that refills slowly by itself and FAST while drifting or flying off jumps
+    tickBoost(dt) {
+      if (this.nitro > 0) { this.nitro -= dt; if (this.nitro < 0) this.nitro = 0; this.nitroT = this.boost; return; }
+      const lv = this.upg.nitro || 0, b = this.buff || {};
+      let r = (1 / 45) * (1 + 0.6 * lv) * (b.nitro ? 2 : 1);
+      if (this.drifting) r += 0.2; if (this.air && this.kind === 'ground') r += 0.3;
+      this.boost = Math.min(1, this.boost + r * dt); this.nitroT = this.boost;
+    }
+    fireNitro() {
+      if (this.nitro > 0 || this.boost < 0.2) return false;
+      this.nitro = this.nitroMax = this.boost * (2.2 + 0.45 * (this.upg.nitro || 0)); this.boost = 0; this.nitroT = 0; return true;
     }
     stepGround(dt, inp) {
       const S = this.stats(), V = this.V;
@@ -90,16 +104,19 @@
         const av = Math.abs(vF), sf = U.clamp(av / 5, 0, 1), hs = 1 / (1 + Math.pow(av / 28, 1.5));
         let yr = -this.st * V.turn * 1.45 * sf * hs * (vF >= 0 ? 1 : -1);
         let gripAcc = grip * 40;
-        if (inp && inp.hand) { gripAcc *= 0.3; yr *= 1.35; vF -= Math.sign(vF) * Math.min(Math.abs(vF), 6 * dt); }
+        // handbrake = DRIFT: the rear lets go, the car swings round, and grip comes back smoothly when you let go
+        const hb = !!(inp && inp.hand) && av > 5;
+        this.gripK += ((hb ? 0.2 : 1) - this.gripK) * Math.min(1, dt * (hb ? 9 : 2.6));
+        gripAcc *= this.gripK; if (hb) { yr *= 1.55; vF -= Math.sign(vF) * Math.min(Math.abs(vF), 3.5 * dt); } else if (this.gripK < 0.9) yr *= 1.2;
+        if (inp && inp.hand && av <= 5) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 8 * dt);
         // lateral friction (grip limited -> slides/drifts when asking too much)
         const red = Math.min(Math.abs(vS), gripAcc * dt); vS -= Math.sign(vS) * red;
         if (hold && Math.abs(vS) < 0.8) vS = 0;
         this.skid = Math.abs(vS) > 4 && av > 8 ? Math.abs(vS) : 0;
+        this.drifting = this.kind === 'ground' && Math.abs(vS) > 2.6 && av > 9; this.slip = vS;
         this.vx = fx * vF + rx * vS; this.vz = fz * vF + rz * vS;
         this.yaw += yr * dt;
       }
-      if (this.nitro > 0) { this.nitro -= dt; if (this.nitro <= 0) this.nitroT = 0; }
-      if (this.nitroT < 1 && this.nitro <= 0) this.nitroT = Math.min(1, this.nitroT + dt / (this.buff && this.buff.nitro ? 4 : 8));
       this.vF = vF;
       // move
       let nx = this.x + this.vx * dt, nz = this.z + this.vz * dt;
@@ -112,14 +129,19 @@
       }
       this.x = nx; this.z = nz;
       // vertical
-      const gh = this.groundH(this.x, this.z) + (this.kind === 'boat' ? Math.sin(performance.now() / 400 + this.x) * 0.08 : 0);
+      const side = this.kind === 'boat' ? 0 : W.sideH(this.x, this.z);
+      const gh = this.groundH(this.x, this.z) + (this.kind === 'boat' ? Math.sin(performance.now() / 400 + this.x) * 0.08 : 0), ghb = gh - side;
+      if (this.side != null && Math.abs(side - this.side) > 0.05 && !this.air) this.sp.vy += (side - this.side) * 9; // kerb bump
+      this.side = side;
       if (this.air) {
         this.vy -= G_ * dt; this.y += this.vy * dt;
-        if (this.y <= gh) { if (this.vy < -14) { this.hit((-this.vy - 12) * 0.8, this.x, this.z, true); this.ev.push({ t: 'land', s: -this.vy }); } this.y = gh; this.vy = 0; this.air = false; }
+        if (this.y <= gh) { this.sp.vy -= Math.min(5, -this.vy * 0.22); this.ev.push({ t: 'land', s: -this.vy, air: this.airT || 0 }); if (this.vy < -14) this.hit((-this.vy - 12) * 0.8, this.x, this.z, true); this.y = gh; this.vy = 0; this.air = false; this.yb = ghb; }
+        this.airT = (this.airT || 0) + dt;
       } else {
-        const vy = (gh - this.y) / dt;
-        if (vy < this.vy - G_ * dt * 1.5 && this.vy > 2 && Math.abs(vF) > 14) { this.air = true; this.vy = Math.min(this.vy, 16); this.y += this.vy * dt; }
+        const yb = this.yb == null ? ghb : this.yb, vy = (ghb - yb) / dt;
+        if (vy < this.vy - G_ * dt * 1.5 && this.vy > 2 && Math.abs(vF) > 14) { this.air = true; this.airT = 0; this.vy = Math.min(this.vy, 16); this.y += this.vy * dt; this.ev.push({ t: 'launch' }); }
         else { this.vy = U.clamp(vy, -30, 16); this.y = gh; }
+        this.yb = ghb;
       }
     }
     stepHeli(dt, inp) {
@@ -143,7 +165,6 @@
       const g2 = Math.max(W.gy(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
       if (this.y < g2) { if (this.vy < -9) this.hit((-this.vy - 8) * 0.9, this.x, this.z, true); if (Math.hypot(vF, 0) > 12 && this.y < g2 - 0.5) this.hit(Math.abs(vF) * 0.3, this.x, this.z, true); this.y = g2; this.vy = Math.max(0, this.vy); }
       this.air = this.y > g2 + 0.3; this.tiltF = U.lerp(this.tiltF || 0, -vF / S.vmax * 0.22, dt * 3); this.tiltS = U.lerp(this.tiltS || 0, sIn * 0.18, dt * 3);
-      if (this.nitro > 0) { this.nitro -= dt; if (this.nitro <= 0) this.nitroT = 0; } else if (this.nitroT < 1) this.nitroT = Math.min(1, this.nitroT + dt / 8);
     }
     stepPlane(dt, inp) {
       const V = this.V, S = this.stats();
@@ -180,7 +201,6 @@
         else { this.y = g2; this.vy = 0; }
       }
       this.air = this.y > g2 + 0.3; this.bank = U.lerp(this.bank || 0, this.air ? sIn * 0.6 : 0, dt * 3);
-      if (this.nitro > 0) { this.nitro -= dt; if (this.nitro <= 0) this.nitroT = 0; } else if (this.nitroT < 1) this.nitroT = Math.min(1, this.nitroT + dt / 8);
     }
     stepBalloon(dt, inp) {
       const V = this.V, gh = Math.max(W.gy(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
@@ -197,7 +217,6 @@
       const g2 = Math.max(W.gy(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
       if (this.y < g2) { if (this.vy < -6) this.hit(4, this.x, this.z, true); this.y = g2; this.vy = Math.max(0, this.vy); }
       this.air = this.y > g2 + 0.3;
-      if (this.nitro > 0) { this.nitro -= dt; if (this.nitro <= 0) this.nitroT = 0; } else if (this.nitroT < 1) this.nitroT = Math.min(1, this.nitroT + dt / 8);
     }
     circles() {
       const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
@@ -249,6 +268,7 @@
         else { this.pitch = U.lerp(this.pitch, -0.08, Math.min(1, dt * 2)); }
         m.rotation.set(0, 0, 0); m.rotation.order = 'YXZ'; m.rotation.y = this.yaw; m.rotation.x = -U.clamp(this.pitch, -0.6, 0.6); m.rotation.z = U.clamp(this.roll, -0.5, 0.5);
         M.spinWheels(m, this.vF, dt, this.st);
+        this.suspend(dt, inp);
       } else if (this.kind === 'heli') {
         m.rotation.order = 'YXZ'; m.rotation.y = this.yaw; m.rotation.x = -(this.tiltF || 0); m.rotation.z = this.tiltS || 0;
         if (m.userData.rotor) { this.rotorSpin = (this.rotorSpin || 0) + dt * (6 + 30 * (this.lift || 0)); m.userData.rotor.rotation.y = this.rotorSpin; m.userData.trotor.rotation.x = this.rotorSpin * 1.5; }
@@ -260,6 +280,18 @@
         m.rotation.set(0, this.yaw, Math.sin(performance.now() / 900) * 0.02);
         if (m.userData.flame) { m.userData.flame.visible = !!this.burn; m.userData.flame.scale.y = 0.8 + Math.random() * 0.5; }
       }
+    }
+    // springy chassis: leans out in turns, dips when braking, squats on launch, squashes on landings and kerbs
+    suspend(dt, inp) {
+      const ch = this.model.userData.chassis; if (!ch || !(dt > 0)) return;
+      const sp = this.sp, aL = U.clamp(((this.vF - (this._pv == null ? this.vF : this._pv)) / dt), -40, 40), yr = U.ang(this.yaw - (this._py == null ? this.yaw : this._py)) / dt;
+      this._pv = this.vF; this._py = this.yaw;
+      const big = this.L > 7 ? 0.6 : 1, tp = this.air ? 0.04 : U.clamp(aL * 0.0045, -0.07, 0.07) * big, tr = this.air ? 0 : U.clamp(this.vF * yr * 0.0042 + (this.slip || 0) * 0.004, -0.085, 0.085) * big;
+      const k = 70, c = 11, h = Math.min(dt, 1 / 30);
+      sp.vp += ((tp - sp.p) * k - sp.vp * c) * h; sp.p += sp.vp * h; sp.vr += ((tr - sp.r) * k - sp.vr * c) * h; sp.r += sp.vr * h;
+      sp.vy += ((0 - sp.y) * 90 - sp.vy * 9) * h; sp.y = U.clamp(sp.y + sp.vy * h, -0.28, 0.25);
+      ch.rotation.x = sp.p; ch.rotation.z = sp.r; ch.position.y = sp.y;
+      const tm = this.model.userData.tailMat; if (tm) { const brk = (inp && inp.brk > 0 && this.vF > 0.5) || (this.traffic && aL < -2.5); tm.color.setScalar(brk ? 1 : (M.nightOn ? 0.85 : 0.6)); }
     }
     setRemote(s) { // apply network snapshot target
       this.tx = s.x; this.ty = s.y; this.tz = s.z; this.tyaw = s.yaw; this.vF = s.v; this.tp = s.p || 0; this.tr = s.r || 0; this.burn = !!s.b; this.lift = 1; this.dmg = s.d || 0; this.thr = s.th || 0;

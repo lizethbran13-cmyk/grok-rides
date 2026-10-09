@@ -54,7 +54,7 @@
   // ---------- builder ----------
   const ROOM = { showroom: [30, 22, 7.5], garage: [24, 18, 6.5], jobs: [20, 16, 5], hotel: [26, 20, 7.5], raceclub: [24, 18, 6], diner: [20, 15, 4.8], pizza: [18, 14, 4.8], store: [20, 15, 4.8], gas: [18, 13, 4.5], trading: [20, 15, 5], icecafe: [22, 16, 5], lodge: [22, 16, 7] };
   function Builder(p) {
-    const sz = (p.id === 'skyhangar' ? [36, 26, 11] : ROOM[p.kind]).slice(); const b = this;
+    const sz = (p.id === 'skyhangar' ? [36, 26, 11] : p.gen ? (IN.ROOMV[p.variant] || [18, 14, 4.8]) : ROOM[p.kind]).slice(); const b = this;
     b.p = p; b.W = sz[0]; b.D = sz[1]; b.H = sz[2]; b.scene = new T.Scene(); b.solids = []; b.stations = []; b.npcs = []; b.anims = []; b.mats = {};
     b.scene.background = new T.Color('#1e1b2e');
   }
@@ -65,11 +65,12 @@
   // wall sign: side 'n' (back wall z=-D/2), 'e' (x=+W/2), 'w' (x=-W/2), 's' (front wall)
   Builder.prototype.sign = function (text, side, along, y, w, h, bg, fg) {
     const m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ map: signTex(text, bg, fg, Math.round(256 * w / h), 256) }));
-    const b = this, e = 0.06;
+    const b = this, e = 0.24;
     if (side === 'n') { m.position.set(along, y, -b.D / 2 + e); }
     else if (side === 's') { m.position.set(along, y, b.D / 2 - e); m.rotation.y = PI; }
     else if (side === 'e') { m.position.set(b.W / 2 - e, y, along); m.rotation.y = -PI / 2; }
     else { m.position.set(-b.W / 2 + e, y, along); m.rotation.y = PI / 2; }
+    { const bx = new T.Mesh(M.rbox(w + 0.2, h + 0.2, 0.22, 0.06), this.mat(bg || '#1f2937')); bx.position.copy(m.position); bx.rotation.copy(m.rotation); bx.translateZ(-0.12); b.scene.add(bx); } // a real sign board behind the face
     b.scene.add(m); return m;
   };
   Builder.prototype.window = function (side, along, y, w, h) { // bright daylight window with frame
@@ -78,17 +79,31 @@
     const bar = new T.Mesh(new T.PlaneGeometry(0.08, h), this.mat('#f8fafc', true)); bar.position.copy(m.position); bar.rotation.copy(m.rotation); bar.translateZ(0.01); b.scene.add(bar);
     return m;
   };
-  Builder.prototype.sprite = function (text, x, y, z, s, opts) { const sp = M.sprite(text, Object.assign({ scale: s || 1.2 }, opts || {})); sp.position.set(x, y, z); this.scene.add(sp); return sp; };
-  Builder.prototype.plant = function (x, z, s) { s = s || 1; this.cyl(x, 0, z, 0.32 * s, 0.55 * s, '#b45309', true, 10); const l = this.ball(x, 0.95 * s, z, 0.55 * s, '#16a34a'); l.scale.y = 1.2; this.ball(x + 0.2 * s, 1.35 * s, z, 0.3 * s, '#22c55e'); };
+  Builder.prototype.sprite = function (text, x, y, z, s, opts) {
+    if (!opts && [...text].length <= 3 && !/[A-Za-z0-9$]/.test(text)) { const tk = M.token(text, (s || 1.2) * 0.7); tk.position.set(x, y, z); tk.rotation.y = Math.random() * 6; this.scene.add(tk); return tk; } /* emoji prop -> real 3D token */
+    const sp = M.sprite(text, Object.assign({ scale: s || 1.2 }, opts || {})); sp.position.set(x, y, z); this.scene.add(sp); return sp; };
+  Builder.prototype.plant = function (x, z, s) { // pot with rim + soil + a bushy clump of leaves
+    s = s || 1; const pot = new T.Mesh(new T.CylinderGeometry(0.34 * s, 0.25 * s, 0.55 * s, 14), this.mat('#c2410c')); pot.position.set(x, 0.275 * s, z); this.scene.add(pot); this.solids.push({ x0: x - 0.34 * s, z0: z - 0.34 * s, x1: x + 0.34 * s, z1: z + 0.34 * s });
+    const rim = new T.Mesh(new T.TorusGeometry(0.34 * s, 0.05 * s, 6, 16), this.mat('#9a3412')); rim.rotation.x = PI / 2; rim.position.set(x, 0.55 * s, z); this.scene.add(rim); this.cyl(x, 0.5 * s, z, 0.3 * s, 0.04, '#57351c', false, 12);
+    [[0, 1.0, 0, 0.42, '#16a34a'], [0.22, 1.25, 0.08, 0.3, '#22c55e'], [-0.2, 1.2, -0.1, 0.32, '#15803d'], [0.05, 1.5, -0.05, 0.26, '#4ade80'], [-0.08, 0.85, 0.22, 0.26, '#22c55e']].forEach((q) => { const l = new T.Mesh(new T.IcosahedronGeometry(q[3] * s, 1), this.mat(q[4])); l.position.set(x + q[0] * s, q[1] * s, z + q[2] * s); l.scale.y = 1.15; this.scene.add(l); });
+  };
   Builder.prototype.table = function (x, z, c, r) { this.cyl(x, 0.72, z, r || 0.6, 0.06, c || '#f8fafc', false, 18); this.cyl(x, 0, z, 0.07, 0.72, '#6b7280', false, 8); this.solids.push({ x0: x - 0.6, z0: z - 0.6, x1: x + 0.6, z1: z + 0.6 }); };
-  Builder.prototype.chair = function (x, z, c) { this.box(x, 0.42, z, 0.45, 0.08, 0.45, c || '#ef4444'); this.cyl(x, 0, z, 0.05, 0.42, '#6b7280', false, 6); };
+  Builder.prototype.chair = function (x, z, c, face) { // seat cushion, backrest, four legs; face = direction the sitter looks
+    c = c || '#ef4444'; const g = new T.Group(); g.position.set(x, 0, z); this.scene.add(g); const seat = new T.Mesh(M.rbox(0.5, 0.09, 0.5, 0.04), this.mat(c)); seat.position.y = 0.46; g.add(seat);
+    const back = new T.Mesh(M.rbox(0.5, 0.5, 0.07, 0.04), this.mat(c)); back.position.set(0, 0.76, -0.22); g.add(back); g.rotation.y = face || 0;
+    [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]].forEach((q) => { const l = new T.Mesh(new T.CylinderGeometry(0.025, 0.025, 0.44, 6), this.mat('#6b4423')); l.position.set(q[0], 0.22, q[1]); g.add(l); });
+  };
   Builder.prototype.shelf = function (x, z, w, rotX, cols) { // shelf of colorful boxes, long along x (or z when rotX)
     const d = 0.7, h = 1.9, sx = rotX ? d : w, sz = rotX ? w : d; this.box(x, 0, z, sx, h, sz, '#e5e7eb', true);
     cols = cols || ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
     for (let lv = 0; lv < 3; lv++) for (let i = 0; i < Math.floor(w / 0.45); i++) { const o = -w / 2 + 0.25 + i * 0.45, c = cols[(i * 3 + lv * 5) % cols.length]; const hh = 0.32 + ((i + lv) % 3) * 0.06; if (rotX) { this.box(x - d / 2 - 0.02, 0.3 + lv * 0.6, z + o, 0.12, hh, 0.36, c); this.box(x + d / 2 + 0.02, 0.3 + lv * 0.6, z + o, 0.12, hh, 0.36, c); } else { this.box(x + o, 0.3 + lv * 0.6, z - d / 2 - 0.02, 0.36, hh, 0.12, c); this.box(x + o, 0.3 + lv * 0.6, z + d / 2 + 0.02, 0.36, hh, 0.12, c); } }
   };
   Builder.prototype.counter = function (x, z, w, d, top, front) { this.box(x, 0, z, w, 1.0, d, front || '#7c3aed', true); this.box(x, 1.0, z, w + 0.1, 0.08, d + 0.1, top || '#f8fafc'); };
-  Builder.prototype.sofa = function (x, z, w, c, rot) { const g = new T.Group(); const s = (bx, by, bz, bw, bh, bd) => { const m = new T.Mesh(new T.BoxGeometry(bw, bh, bd), this.mat(c)); m.position.set(bx, by + bh / 2, bz); g.add(m); }; s(0, 0, 0, w, 0.45, 0.9); s(0, 0.45, -0.35, w, 0.55, 0.2); s(-w / 2 + 0.1, 0.45, 0, 0.2, 0.3, 0.9); s(w / 2 - 0.1, 0.45, 0, 0.2, 0.3, 0.9); g.position.set(x, 0, z); g.rotation.y = rot || 0; this.scene.add(g); const hw = Math.abs(Math.cos(rot || 0)) > 0.5 ? w / 2 : 0.45, hd = Math.abs(Math.cos(rot || 0)) > 0.5 ? 0.45 : w / 2; this.solids.push({ x0: x - hw, z0: z - hd, x1: x + hw, z1: z + hd }); };
+  Builder.prototype.sofa = function (x, z, w, c, rot) { const g = new T.Group(), R = (bx, by, bz, bw, bh, bd, rr, col) => { const m = new T.Mesh(M.rbox(bw, bh, bd, rr), this.mat(col || c)); m.position.set(bx, by + bh / 2, bz); g.add(m); };
+    const dk = new T.Color(c).multiplyScalar(0.8).getStyle(); R(0, 0.1, 0, w, 0.3, 0.9, 0.08, dk); const n = Math.max(2, Math.round(w / 1.1)); for (let i = 0; i < n; i++) { const cw = (w - 0.5) / n, cx = -w / 2 + 0.25 + cw * (i + 0.5); R(cx, 0.4, 0.05, cw - 0.04, 0.18, 0.78, 0.08); R(cx, 0.55, -0.34, cw - 0.04, 0.6, 0.22, 0.1); }
+    R(-w / 2 + 0.13, 0.1, 0, 0.26, 0.6, 0.92, 0.12, dk); R(w / 2 - 0.13, 0.1, 0, 0.26, 0.6, 0.92, 0.12, dk); R(-w / 2 + 0.6, 0.62, -0.05, 0.38, 0.32, 0.12, 0.1, '#fde68a');
+    [[-w / 2 + 0.15, -0.35], [w / 2 - 0.15, -0.35], [-w / 2 + 0.15, 0.35], [w / 2 - 0.15, 0.35]].forEach((q) => { const l = new T.Mesh(new T.CylinderGeometry(0.04, 0.03, 0.1, 6), this.mat('#6b4423')); l.position.set(q[0], 0.05, q[1]); g.add(l); });
+    g.position.set(x, 0, z); g.rotation.y = rot || 0; this.scene.add(g); const hw = Math.abs(Math.cos(rot || 0)) > 0.5 ? w / 2 : 0.45, hd = Math.abs(Math.cos(rot || 0)) > 0.5 ? 0.45 : w / 2; this.solids.push({ x0: x - hw, z0: z - hd, x1: x + hw, z1: z + hd }); };
   Builder.prototype.car = function (type, x, z, yaw, color, y) { const m = M.vehicle(type, color || GR.VEH[type].color || '#ff4fd8'); m.position.set(x, y || 0, z); m.rotation.y = yaw || 0; this.scene.add(m); const L = m.userData.L || 4, Wd = m.userData.W || 2; const c = Math.abs(Math.sin(yaw || 0)) > 0.7; this.solids.push({ x0: x - (c ? L : Wd) / 2, z0: z - (c ? Wd : L) / 2, x1: x + (c ? L : Wd) / 2, z1: z + (c ? Wd : L) / 2 }); return m; };
   Builder.prototype.npc = function (x, z, yaw, o) {
     const g = GR.Person(o); g.position.set(x, o.y || 0, z); g.rotation.y = yaw; g.userData.baseY = o.y || 0; this.scene.add(g);
@@ -98,7 +113,7 @@
   };
   Builder.prototype.station = function (x, z, icon, label, fn, col) {
     const ring = new T.Mesh(new T.RingGeometry(0.75, 1.0, 32), new T.MeshBasicMaterial({ color: col || '#3ff0ff', transparent: true, opacity: 0.85, side: T.DoubleSide })); ring.rotation.x = -PI / 2; ring.position.set(x, 0.03, z); this.scene.add(ring);
-    const sp = M.sprite(icon, { scale: 0.9 }); sp.position.set(x, 2.3, z); this.scene.add(sp);
+    const sp = M.token(icon, 0.75, col || '#3ff0ff'); sp.position.set(x, 2.3, z); this.scene.add(sp);
     const st = { x, z, icon, label, fn, ring, sp }; this.stations.push(st); return st;
   };
   Builder.prototype.shell = function (o) {
@@ -115,8 +130,8 @@
     const dm = new T.Mesh(new T.PlaneGeometry(2.3, 2.75), new T.MeshBasicMaterial({ color: '#7CFC9A', transparent: true, opacity: 0.55 })); dm.position.set(0, 1.4, D / 2 + 0.05); dm.rotation.y = PI; b.scene.add(dm);
     const ex = b.sign('🚪 EXIT', 's', 0, 3.15, 1.8, 0.5, '#16a34a'); ex.position.z -= 0.0;
     // ceiling + lights
-    const ce = new T.Mesh(new T.PlaneGeometry(Wd, D), new T.MeshBasicMaterial({ color: o.ceil || '#eeeaf6' })); ce.rotation.x = PI / 2; ce.position.y = H; b.scene.add(ce);
-    for (let i = -1; i <= 1; i += 2) for (let j = -1; j <= 1; j += 2) b.box(i * Wd / 4, H - 0.08, j * D / 4, 2.2, 0.06, 0.8, '#fffbe6', false, true);
+    const ce = new T.Mesh(new T.PlaneGeometry(Wd, D), new T.MeshBasicMaterial({ color: o.ceil || '#eeeaf6' })); ce.rotation.x = PI / 2; ce.position.y = H; if (!o.noCeil) b.scene.add(ce);
+    for (let i = -1; i <= 1; i += 2) for (let j = -1; j <= 1; j += 2) if (!o.noCeil) b.box(i * Wd / 4, H - 0.08, j * D / 4, 2.2, 0.06, 0.8, '#fffbe6', false, true); else b.sprite('✨', i * Wd / 3, H - 0.6, j * D / 3, 0.5);
     // baseboard trim + accent stripe
     b.box(0, 0, -D / 2 + 0.03, Wd, 0.25, 0.06, acc); b.box(-Wd / 2 + 0.03, 0, 0, 0.06, 0.25, D, acc); b.box(Wd / 2 - 0.03, 0, 0, 0.06, 0.25, D, acc);
     b.box(0, H - 0.2, -D / 2 + 0.03, Wd, 0.1, 0.06, acc); b.box(-Wd / 2 + 0.03, H - 0.6, 0, 0.06, 0.2, D, acc); b.box(Wd / 2 - 0.03, H - 0.6, 0, 0.06, 0.2, D, acc);
@@ -349,17 +364,25 @@
     }
   };
   function UI() { return GR.UI; }
-  IN.cache = {};
+  IN.Builder = Builder; IN.BUILD = BUILD; IN.ROOMV = {};
+  IN.kit = { who, pick, snackStation, hatStation, floorTex, signTex, spotOf, nearestSpot, SHIRTS };
+  IN.cache = {}; const lru = [];
+  function dispose(b) { b.scene.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { if (m.map && !Object.values(texCache).includes(m.map) && !(m.map.userData && m.map.userData.keep)) m.map.dispose(); m.dispose(); }); } }); }
   IN.get = function (p) {
-    if (IN.cache[p.id]) return IN.cache[p.id];
-    const b = new Builder(p); (BUILD[p.kind] || BUILD.store)(b, p); IN.cache[p.id] = b; return b;
+    if (IN.cache[p.id]) { const i = lru.indexOf(p.id); if (i >= 0) lru.splice(i, 1); lru.push(p.id); return IN.cache[p.id]; }
+    const b = new Builder(p); (p.gen ? BUILD.gen : (BUILD[p.kind] || BUILD.store))(b, p);
+    if (GR.Fun && GR.Fun.decorInterior) GR.Fun.decorInterior(b, p);
+    IN.cache[p.id] = b; lru.push(p.id);
+    // keep memory low on phones: only the 8 most recent generated interiors stay built
+    while (lru.length > 8) { const id = lru.find((k) => IN.cache[k] && IN.cache[k].p.gen && IN.cache[k] !== GR.G.inside); if (!id) break; lru.splice(lru.indexOf(id), 1); const ob = IN.cache[id]; delete IN.cache[id]; if (me && me.parent === ob.scene) ob.scene.remove(me); dispose(ob); }
+    return b;
   };
   IN.update = function (b, dt, t, fx, fz) {
     b.anims.forEach((f) => f(t));
-    b.stations.forEach((s, i) => { s.ring.material.opacity = 0.55 + Math.sin(t * 4 + i) * 0.3; s.sp.position.y = 2.3 + Math.sin(t * 2 + i) * 0.1; });
+    b.stations.forEach((s, i) => { s.ring.material.opacity = 0.55 + Math.sin(t * 4 + i) * 0.3; s.sp.position.y = 2.3 + Math.sin(t * 2 + i) * 0.1; s.sp.rotation.y = t * 1.6 + i; });
     b.npcs.forEach((n) => {
       let spd = 0;
-      const near = Math.hypot(fx - n.x, fz - n.z) < 2.6;
+      const near = Math.hypot(fx - n.x, fz - n.z) < 2.6 || (n.path && Math.hypot(fx - n.x, fz - n.z) < 3.2);
       if (n.path && !near && n.danceT <= 0) {
         const tg = n.path[n.pi], dx = tg[0] - n.x, dz = tg[1] - n.z, d = Math.hypot(dx, dz);
         if (d < 0.2) { n.pause = (n.pause || 0) + dt; if (n.pause > 1.5) { n.pause = 0; n.pi = (n.pi + 1) % n.path.length; } }
@@ -505,13 +528,13 @@
     const r = W.nearestRoad(Foot.x, Foot.z, true); if (!r || Math.hypot(r.x - Foot.x, r.z - Foot.z) > 60) { UI().toast('Walk closer to a road so your ride can find you.', true); return; }
     $('fade').classList.add('on'); setTimeout(() => { v.place(r.x, r.z, r.yaw); $('fade').classList.remove('on'); UI().toast('📲 Your ' + GR.VEH[v.type].name + ' is here!'); }, 300);
   };
-  Foot.enter = function (p) {
+  Foot.enter = function (p, quiet) {
     const G = G_(); if (!Foot.active && !Foot.getOut()) return false;
     const b = IN.get(p); $('fade').classList.add('on');
     Foot.inside = p; G.inside = b; b.scene.add(body()); Foot.x = 0; Foot.z = b.D / 2 - 3.2; Foot.y = 0; Foot.yaw = PI; Foot.camYaw = PI; Foot.spd = 0; place();
     document.body.classList.add('inside'); $('regionN').textContent = p.short; G.camSnap = true; GR.Snd.fx('ui'); setTimeout(() => $('fade').classList.remove('on'), 250);
     G.save.visited = G.save.visited || {}; if (!G.save.visited[p.id]) { G.save.visited[p.id] = 1; G.persist(); }
-    UI().toast(p.icon + ' Welcome to ' + p.name + '!'); GR.Net.sendNow && GR.Net.sendNow(); return true;
+    if (!quiet) UI().toast(p.icon + ' Welcome to ' + p.name + '!'); GR.Net.sendNow && GR.Net.sendNow(); return true;
   };
   Foot.leave = function (quiet) {
     const G = G_(), p = Foot.inside; if (!p) return; Foot.inside = null; G.inside = null; G.scene.add(body());
@@ -519,7 +542,7 @@
     document.body.classList.remove('inside'); $('regionN').textContent = W.REGION_NAMES[W.region(Foot.x, Foot.z)]; G.camSnap = true; if (!quiet) GR.Snd.fx('ui'); GR.Net.sendNow && GR.Net.sendNow();
   };
   function place() { const m = body(); m.position.set(Foot.x, Foot.y, Foot.z); m.rotation.y = Foot.yaw; }
-  Foot.nearDoor = function (x, z, r) { let best = null, bd = r; (GR.PL.list || []).forEach((p) => { const d = Math.hypot(p.door.x - x, p.door.z - z); if (d < bd) { bd = d; best = p; } }); return best; };
+  Foot.nearDoor = (x, z, r) => GR.PL.nearDoor(x, z, r);
   Foot.nearStation = function () { const b = G_().inside; if (!b) return null; let best = null, bd = 1.3; b.stations.forEach((s) => { const d = Math.hypot(s.x - Foot.x, s.z - Foot.z); if (d < bd) { bd = d; best = s; } }); return best; };
   Foot.nearNpc = function () { const b = G_().inside; if (!b) return null; let best = null, bd = 2.0; b.npcs.forEach((n) => { const d = Math.hypot(n.x - Foot.x, n.z - Foot.z); if (d < bd) { bd = d; best = n; } }); return best; };
   Foot.talk = function (n) { const l = n.lines[n.li % n.lines.length]; n.li++; n.waveT = 1.6; UI().toast('💬 ' + n.name + ': ' + l); GR.Snd.fx('ui'); };
@@ -533,6 +556,7 @@
       return null;
     }
     const p = Foot.nearDoor(Foot.x, Foot.z, 3.2); if (p) return { label: '🚪 ENTER ' + p.short, fn: () => Foot.enter(p) };
+    const fo = GR.Fun && GR.Fun.footOption && GR.Fun.footOption(); if (fo) return fo;
     const dv = Math.hypot(v.x - Foot.x, v.z - Foot.z);
     if (dv < (v.L || 4) / 2 + 4) return { label: '🚗 GET IN', fn: () => Foot.getIn() };
     if (G.room) for (const k in G.remotes) { const r = G.remotes[k]; if (r.veh && !r.ride && !r.foot && r.veh.model.visible && Math.hypot(r.veh.x - Foot.x, r.veh.z - Foot.z) < (r.veh.L || 4) / 2 + 3) return { label: '🚗 HOP IN WITH ' + r.name.toUpperCase(), fn: () => { Foot.getIn(true); G.hopIn(k); } }; }
@@ -545,12 +569,13 @@
     const mx = inp.mx || 0, my = inp.my || 0, mag = Math.min(1, Math.hypot(mx, my));
     const cy = Foot.camYaw, fx = Math.sin(cy), fz = Math.cos(cy), rx = -fz, rz = fx;
     let dx = fx * my + rx * mx, dz = fz * my + rz * mx; const dl = Math.hypot(dx, dz);
-    const run = inp.run || mag > 0.92, target = mag < 0.08 ? 0 : (run ? 6.2 : 3.0) * Math.max(0.4, mag);
+    const run = inp.run || mag > 0.92, target = mag < 0.08 ? 0 : (run ? (G.save.sneakers ? 8.4 : 6.2) : 3.0) * Math.max(0.4, mag);
     Foot.spd += (target - Foot.spd) * Math.min(1, dt * 8);
     if (dl > 0.05) { dx /= dl; dz /= dl; Foot.yaw += U.ang(Math.atan2(dx, dz) - Foot.yaw) * Math.min(1, dt * 10); Foot.dance = 0; }
     const sx = Math.sin(Foot.yaw) * Foot.spd * dt, sz = Math.cos(Foot.yaw) * Foot.spd * dt;
     if (Foot.inside) {
-      const b = G.inside, hw = b.W / 2 - 0.35, hd = b.D / 2 - 0.35, hit = (x, z) => Math.abs(x) > hw || Math.abs(z) > hd || b.solids.some((s) => x > s.x0 - 0.3 && x < s.x1 + 0.3 && z > s.z0 - 0.3 && z < s.z1 + 0.3);
+      // NPCs are solid now (you bump into them instead of walking through)
+      const b = G.inside, hw = b.W / 2 - 0.35, hd = b.D / 2 - 0.35, hit = (x, z) => Math.abs(x) > hw || Math.abs(z) > hd || b.solids.some((s) => x > s.x0 - 0.3 && x < s.x1 + 0.3 && z > s.z0 - 0.3 && z < s.z1 + 0.3) || b.npcs.some((n) => { const d0 = Math.hypot(n.x - Foot.x, n.z - Foot.z), d1 = Math.hypot(n.x - x, n.z - z); return d1 < 0.7 && d1 < d0; });
       if (!hit(Foot.x + sx, Foot.z)) Foot.x += sx; if (!hit(Foot.x, Foot.z + sz)) Foot.z += sz; Foot.y = 0;
       IN.update(b, dt, t, Foot.x, Foot.z);
       // walking out through the door = exit
@@ -567,8 +592,8 @@
   };
   const cp = new T.Vector3(), la = new T.Vector3();
   Foot.cam = function (dt, cam, look) {
-    const G = G_(), yaw = Foot.camYaw + look.off, ins = Foot.inside, dist = ins ? 6.6 : 5.6, h = (ins ? 4.3 : 2.8) + look.pitch * dist;
-    cp.set(Foot.x - Math.sin(yaw) * dist, Foot.y + h, Foot.z - Math.cos(yaw) * dist); la.set(Foot.x + Math.sin(yaw) * (ins ? 4 : 1.5), Foot.y + (ins ? 1.5 : 1.4), Foot.z + Math.cos(yaw) * (ins ? 4 : 1.5));
+    const G = G_(), yaw = Foot.camYaw + look.off, ins = Foot.inside, dist = ins ? 6.6 : 5.6, h = (ins ? Math.min(3.4, G.inside.H - 1.0) : 2.8) + look.pitch * dist;
+    cp.set(Foot.x - Math.sin(yaw) * dist, Foot.y + h, Foot.z - Math.cos(yaw) * dist); la.set(Foot.x + Math.sin(yaw) * (ins ? 4 : 1.5), Foot.y + (ins ? 0.55 : 1.4), Foot.z + Math.cos(yaw) * (ins ? 4 : 1.5));
     if (ins) { const b = G.inside; cp.x = U.clamp(cp.x, -b.W / 2 + 0.4, b.W / 2 - 0.4); cp.z = U.clamp(cp.z, -b.D / 2 + 0.4, b.D / 2 - 0.4); const lost = dist - Math.hypot(cp.x - Foot.x, cp.z - Foot.z); if (lost > 0) cp.y += lost * 0.4; cp.y = U.clamp(cp.y, 0.8, b.H - 0.35); }
     else { let g = W.height(cp.x, cp.z) + 0.9; for (let k = 1; k <= 3; k++) { const f = k / 4, gx = U.lerp(cp.x, Foot.x, f), gz = U.lerp(cp.z, Foot.z, f), need = W.height(gx, gz) + 0.8, lineY = U.lerp(cp.y, Foot.y + 1.2, f); if (need > lineY) g = Math.max(g, cp.y + (need - lineY) / (1 - f)); } if (cp.y < g) cp.y = Math.min(g, Foot.y + 14); }
     if (G.camSnap) { cam.position.copy(cp); G.camSnap = false; } else cam.position.lerp(cp, Math.min(1, dt * 8));

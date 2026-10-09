@@ -28,12 +28,15 @@
     buildWater(scene);
     const statics = []; // vertex-colored static geometry
     GR.PL.layout();
-    buildCity(scene, statics);
+    GR.BLD.buildCity(scene, statics);
     buildTown(statics);
+    GR.BLD.buildTownStreets();
     buildMesas(statics);
     buildLandmarks(scene, statics);
+    buildRamps(statics);
     buildTrees(scene);
     GR.PL.buildExteriors(scene);
+    GR.BLD.finish(scene);
     const g = U.merge(statics); const m = new T.Mesh(g, M.matMatte); scene.add(m); SC.statics = m;
     buildMarkers(scene);
   };
@@ -50,7 +53,7 @@
     const sky = new T.Mesh(g, new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -1; scene.add(sky); SC.sky = sky;
     // the sun: a soft glowing disc in the sky dome (moves with the camera like the sky)
     { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'); const gr = x.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,245,1)'); gr.addColorStop(0.18, 'rgba(255,250,225,1)'); gr.addColorStop(0.3, 'rgba(255,236,170,0.45)'); gr.addColorStop(1, 'rgba(255,230,160,0)'); x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
-      const sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(cv), fog: false, depthWrite: false, transparent: true })); sp.scale.set(520, 520, 1); sp.position.copy(sd).multiplyScalar(2300); sp.renderOrder = -1; sky.add(sp); }
+      const sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(cv), fog: false, depthWrite: false, transparent: true })); sp.scale.set(520, 520, 1); sp.position.copy(sd).multiplyScalar(2300); sp.renderOrder = -1; sky.add(sp); SC.sunSp = sp; }
     // clouds
     const cg = []; const r = U.rng(7);
     for (let i = 0; i < 46; i++) { const x = (r() - 0.5) * 3600, z = (r() - 0.5) * 3600, y = 330 + r() * 120; for (let k = 0; k < 4; k++) cg.push(U.paint(U.xf(new T.IcosahedronGeometry(1, 1), x + (k - 1.5) * 26 + r() * 10, y + r() * 8, z + r() * 20, 0, 0, 0, 30 + r() * 18, 12 + r() * 6, 22 + r() * 10), '#ffffff')); }
@@ -151,97 +154,36 @@
   }
 
   // ---- buildings ----
-  function winTex(wall, glass, lit) {
-    // 4 floors x 4 bays per 12 m tile: framed windows with sills, sky reflections and a few lit rooms
-    const c = document.createElement('canvas'); c.width = 256; c.height = 256; const x = c.getContext('2d');
-    x.fillStyle = wall; x.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 900; i++) { x.fillStyle = 'rgba(0,0,0,' + (Math.random() * 0.035) + ')'; x.fillRect(Math.random() * 256, Math.random() * 256, 3, 3); }
-    for (let j = 0; j < 4; j++) { x.fillStyle = 'rgba(0,0,0,0.10)'; x.fillRect(0, j * 64 + 60, 256, 4); x.fillStyle = 'rgba(255,255,255,0.18)'; x.fillRect(0, j * 64 + 58, 256, 2); }
-    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
-      const gx = 9 + i * 64, gy = 10 + j * 64, w = 46, h = 40, on = Math.random() < lit;
-      x.fillStyle = 'rgba(255,255,255,0.55)'; x.fillRect(gx - 3, gy - 3, w + 6, h + 6);
-      const gr = x.createLinearGradient(gx, gy, gx + w, gy + h);
-      if (on) { gr.addColorStop(0, '#fff3c4'); gr.addColorStop(1, '#ffc96b'); } else { gr.addColorStop(0, '#b9dcff'); gr.addColorStop(0.45, glass); gr.addColorStop(1, '#0d1b33'); }
-      x.fillStyle = gr; x.fillRect(gx, gy, w, h);
-      if (!on) { x.fillStyle = 'rgba(255,255,255,0.22)'; x.beginPath(); x.moveTo(gx + 6, gy + h); x.lineTo(gx + 20, gy); x.lineTo(gx + 28, gy); x.lineTo(gx + 14, gy + h); x.fill(); }
-      x.fillStyle = 'rgba(40,40,50,0.55)'; x.fillRect(gx + w / 2 - 1, gy, 2, h);
-      x.fillStyle = 'rgba(255,255,255,0.7)'; x.fillRect(gx - 4, gy + h + 3, w + 8, 4);
-    }
-    const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 8; return t;
-  }
-  function walls(x0, z0, x1, z1, y0, y1, out) {
-    const P = out.p, UV = out.uv, Nn = out.n, tile = 12;
-    const faces = [[x0, z1, x1, z1, 0, 1], [x1, z1, x1, z0, 1, 0], [x1, z0, x0, z0, 0, -1], [x0, z0, x0, z1, -1, 0]];
-    faces.forEach((f) => {
-      const L = Math.hypot(f[2] - f[0], f[3] - f[1]), u1 = Math.max(1, Math.round(L / tile)), v1 = (y1 - y0) / tile;
-      const q = [[f[0], y0, f[1], 0, 0], [f[2], y0, f[3], u1, 0], [f[2], y1, f[3], u1, v1], [f[0], y1, f[1], 0, v1]];
-      [0, 1, 2, 0, 2, 3].forEach((i) => { P.push(q[i][0], q[i][1], q[i][2]); UV.push(q[i][3], q[i][4]); Nn.push(f[4], 0, f[5]); });
-    });
-  }
-  function buildCity(scene, statics) {
-    const styles = [{ t: winTex('#d9dee8', '#3d6fb6', 0.15), o: { p: [], uv: [], n: [] } }, { t: winTex('#e8d6b8', '#40597a', 0.2), o: { p: [], uv: [], n: [] } }, { t: winTex('#7d8796', '#62c4ff', 0.1), o: { p: [], uv: [], n: [] } }, { t: winTex('#f2b8c6', '#3a4f8a', 0.2), o: { p: [], uv: [], n: [] } }];
-    const r = U.rng(42), C = W.CITY, fronts = { p: [], n: [], uv: [], i: [] };
-    for (let bx = C.x0; bx < C.x1; bx += 100) for (let bz = C.z0; bz < C.z1; bz += 100) {
-      if (bx === 550 && bz === -100) { park(bx, bz, statics); continue; }
-      for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) {
-        const cx = bx + 30 + a * 40, cz = bz + 30 + b * 40;
-        if (GR.SPOTS.some((s) => Math.abs(s.x - cx) < 34 && Math.abs(s.z - cz) < 34)) continue;
-        if (GR.PL.blocksLot(cx, cz, 16, 16)) continue;
-        const w = 22 + r() * 10, d = 22 + r() * 10, dd = Math.hypot(cx - 650, cz + 50);
-        let h = 14 + 150 * Math.exp(-(dd / 240) * (dd / 240)) * (0.45 + 0.55 * r()) + r() * 12;
-        const st = styles[(r() * styles.length) | 0], x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2, y0 = W.height(cx, cz) - 1;
-        walls(x0, z0, x1, z1, y0 + 5.2, y0 + h, st.o); GR.PL.cityFront(fronts, statics, x0, z0, x1, z1, y0, r);
-        statics.push(U.paint(U.xf(new T.BoxGeometry(w + 1, 1, d + 1), cx, y0 + h + 0.5, cz), '#8b93a1'));
-        let top = h;
-        if (h > 70 && r() < 0.7) { const w2 = w * 0.65, d2 = d * 0.65, h2 = 12 + r() * 30; walls(cx - w2 / 2, cz - d2 / 2, cx + w2 / 2, cz + d2 / 2, y0 + h + 1, y0 + h + 1 + h2, st.o); statics.push(U.paint(U.xf(new T.BoxGeometry(w2 + 1, 1, d2 + 1), cx, y0 + h + h2 + 1.5, cz), '#8b93a1')); top = h + h2 + 2; if (r() < 0.6) { statics.push(U.paint(U.xf(new T.CylinderGeometry(0.3, 0.5, 14, 6), cx, y0 + top + 7, cz), '#cfd4dc')); statics.push(U.paint(U.xf(new T.SphereGeometry(0.8, 8, 6), cx, y0 + top + 14, cz), '#ff3b3b')); } }
-        else if (r() < 0.6) { statics.push(U.paint(U.xf(new T.CylinderGeometry(2.4, 2.4, 4, 10), cx + w * 0.2, y0 + h + 3, cz - d * 0.15), '#a0663a')); statics.push(U.paint(U.xf(new T.BoxGeometry(4, 2, 3), cx - w * 0.2, y0 + h + 2, cz + d * 0.2), '#c9ced6')); }
-        W.addBox(x0, z0, x1, z1, y0 + top, 'bld');
-      }
-    }
-    scene.add(GR.PL.cityFrontMesh(fronts));
-    styles.forEach((s) => {
-      const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(s.o.p, 3)); g.setAttribute('normal', new T.Float32BufferAttribute(s.o.n, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(s.o.uv, 2));
-      scene.add(new T.Mesh(g, new T.MeshLambertMaterial({ map: s.t })));
-    });
-    // street lamps
-    const lamp = U.merge([U.paint(new T.CylinderGeometry(0.15, 0.2, 7, 6).translate(0, 3.5, 0), '#40444c'), U.paint(new T.BoxGeometry(0.3, 0.2, 2).translate(0, 7, 0.9), '#40444c'), U.paint(new T.BoxGeometry(0.5, 0.15, 0.8).translate(0, 6.85, 1.6), '#fff6c8')]);
-    const lamps = []; for (let x = C.x0; x <= C.x1; x += 100) for (let z = C.z0 + 50; z < C.z1; z += 100) { lamps.push([x + 9, z, -PI / 2]); lamps.push([x - 9, z + 25, PI / 2]); }
-    const im = new T.InstancedMesh(lamp, M.matMatte, lamps.length), m4 = new T.Matrix4(), q = new T.Quaternion(), e = new T.Euler();
-    lamps.forEach((l, i) => { q.setFromEuler(e.set(0, l[2], 0)); m4.compose(new T.Vector3(l[0], W.height(l[0], l[1]), l[1]), q, new T.Vector3(1, 1, 1)); im.setMatrixAt(i, m4); W.addCirc(l[0], l[1], 0.4, 7, 'pole'); });
-    scene.add(im);
-  }
-  function park(bx, bz, statics) {
-    const cx = bx + 50, cz = bz + 50, y = W.height(cx, cz);
-    statics.push(U.paint(U.xf(new T.BoxGeometry(80, 0.3, 80), cx, y + 0.05, cz), '#6cc95a'));
-    statics.push(U.paint(U.xf(new T.CylinderGeometry(7, 8, 1.2, 20), cx, y + 0.6, cz), '#cfd6e0')); statics.push(U.paint(U.xf(new T.CylinderGeometry(6.2, 6.2, 0.2, 20), cx, y + 1.15, cz), '#4cc3ff'));
-    statics.push(U.paint(U.xf(new T.CylinderGeometry(0.6, 0.9, 3, 10), cx, y + 2, cz), '#cfd6e0'));
-    W.addCirc(cx, cz, 8, 3, 'fountain');
-    // ferris wheel
-    const fx = cx + 22, fz = cz - 20; const wheel = new T.Group();
-    const parts = [U.paint(new T.TorusGeometry(14, 0.35, 6, 40), '#ff4fd8'), U.paint(new T.TorusGeometry(14, 0.35, 6, 40).translate(0, 0, 1.6), '#ff4fd8')];
-    for (let i = 0; i < 12; i++) { const a = i / 12 * PI * 2; parts.push(U.paint(U.xf(new T.CylinderGeometry(0.12, 0.12, 14, 4), Math.cos(a) * 7, Math.sin(a) * 7, 0.8, 0, 0, a + PI / 2), '#ffffff')); const cab = U.paint(U.xf(M.rbox(1.8, 1.6, 1.6, 0.4), Math.cos(a) * 14, Math.sin(a) * 14 - 1.2, 0.8), ['#ffd23f', '#3ff0ff', '#4ade80', '#ff7a3d'][i % 4]); parts.push(cab); }
-    wheel.add(new T.Mesh(U.merge(parts), M.mat)); wheel.position.set(fx, y + 17, fz); SC.scene.add(wheel); SC.anim.push((t) => { wheel.rotation.z = t * 0.12; });
-    statics.push(U.paint(U.xf(new T.CylinderGeometry(0.5, 0.7, 18, 6), fx - 5, y + 8, fz + 0.8, 0, 0, -0.28), '#888')); statics.push(U.paint(U.xf(new T.CylinderGeometry(0.5, 0.7, 18, 6), fx + 5, y + 8, fz + 0.8, 0, 0, 0.28), '#888'));
-    W.addBox(fx - 8, fz - 2, fx + 8, fz + 3, 32, 'ferris');
-    for (let i = 0; i < 10; i++) W.pads.length;
-  }
   function house(x, z, rot, r, statics) {
     const w = 10 + r() * 4, d = 9 + r() * 3, h = 4.5 + r() * 2.5, y = W.height(x, z) - 0.3;
     const wallC = ['#fff1d6', '#ffd6e7', '#d6f0ff', '#e0ffd6', '#fff7a8', '#e8dcff'][(r() * 6) | 0], roofC = ['#c0392b', '#7a4a2a', '#3b6fb6', '#4a7a3b', '#8a4fbf'][(r() * 5) | 0];
     const parts = [U.paint(new T.BoxGeometry(w, h, d).translate(0, h / 2, 0), wallC)];
     const rf = M.ext([['m', -d / 2 - 0.8, 0], ['l', d / 2 + 0.8, 0], ['l', 0, 3.4]], w + 1, 0.12, 2); rf.translate(0, h, 0); parts.push(U.paint(rf, roofC));
     parts.push(U.paint(new T.BoxGeometry(1.6, 2.6, 0.2).translate(0, 1.3, d / 2 + 0.05), '#7a4a2a'));
-    parts.push(U.paint(new T.BoxGeometry(1.6, 1.4, 0.2).translate(-w / 4 - 0.5, 2.6, d / 2 + 0.05), '#4a6fa5')); parts.push(U.paint(new T.BoxGeometry(1.6, 1.4, 0.2).translate(w / 4 + 0.5, 2.6, d / 2 + 0.05), '#4a6fa5'));
+    // real 3D windows: white frame + deep sill + shutters, glass set back inside the frame (front, back and both sides)
+    const trimC = '#ffffff', shutC = roofC;
+    const win = (lx, lz, ry) => { const wp = [U.paint(new T.BoxGeometry(1.5, 1.3, 0.06).translate(0, 0, 0.02), '#3d6aa8'), U.paint(new T.BoxGeometry(1.8, 0.16, 0.22).translate(0, 0.73, 0.1), trimC), U.paint(new T.BoxGeometry(2.0, 0.14, 0.4).translate(0, -0.72, 0.18), trimC), U.paint(new T.BoxGeometry(0.16, 1.3, 0.22).translate(-0.83, 0, 0.1), trimC), U.paint(new T.BoxGeometry(0.16, 1.3, 0.22).translate(0.83, 0, 0.1), trimC), U.paint(new T.BoxGeometry(0.06, 1.3, 0.12).translate(0, 0, 0.06), trimC), U.paint(new T.BoxGeometry(0.55, 1.4, 0.08).translate(-1.2, 0, 0.06), shutC), U.paint(new T.BoxGeometry(0.55, 1.4, 0.08).translate(1.2, 0, 0.06), shutC)];
+      const g = U.merge(wp); g.rotateY(ry); g.translate(lx, 2.6, lz); parts.push(g); };
+    win(-w / 4 - 0.5, d / 2, 0); win(w / 4 + 0.5, d / 2, 0); win(-w / 4, -d / 2, PI); win(w / 4, -d / 2, PI); win(w / 2, 0, PI / 2); win(-w / 2, 0, -PI / 2);
+    // porch roof + step in front of the door
+    parts.push(U.paint(new T.BoxGeometry(2.8, 0.18, 1.4).rotateX(-0.2).translate(0, 3.35, d / 2 + 0.7), roofC)); parts.push(U.paint(new T.BoxGeometry(2.6, 0.3, 1.2).translate(0, 0.15, d / 2 + 0.6), '#cbd5e1'));
     parts.push(U.paint(new T.BoxGeometry(1, 2.6, 1).translate(w / 3, h + 2.2, -1), '#8a5a4a'));
     const g = U.merge(parts); U.xf(g, x, y, z, 0, rot, 0); statics.push(g);
     const ex = Math.abs(Math.sin(rot)) > 0.5 ? d / 2 : w / 2, ez = Math.abs(Math.sin(rot)) > 0.5 ? w / 2 : d / 2;
     W.addBox(x - ex, z - ez, x + ex, z + ez, y + h + 3.4, 'house');
+    // every house is a real home you can visit
+    const nx = Math.round(Math.sin(rot)), nz = Math.round(Math.cos(rot)), fx = x + nx * d / 2, fz = z + nz * d / 2;
+    const fam = FAMILIES[(r() * FAMILIES.length) | 0];
+    GR.BLD.door(fx, fz, nx, nz, y + 0.3, null, '#4ade80', 1.6);
+    GR.BLD.addDoorPt(fx + nx * 1.6, fz + nz * 1.6);
+    GR.BLD.register({ variant: 'home', icon: '🏠', name: 'The ' + fam + ' Family Home', short: fam.toUpperCase() + ' HOUSE', x, z, dx: nx, dz: nz, door: { x: fx + nx * 1.6, z: fz + nz * 1.6 }, region: W.region(x, z), wall: wallC, acc: roofC, fam });
   }
+  const FAMILIES = ['Maple', 'Berry', 'Sunny', 'Pebble', 'Willow', 'Biscuit', 'Clover', 'Juniper', 'Marble', 'Puddle', 'Honey', 'Acorn', 'Rosie', 'Bramble', 'Pippin', 'Toffee'];
   function buildTown(statics) {
     const r = U.rng(9), T0 = W.TOWN;
     for (let bx = T0.x0; bx < T0.x1; bx += 100) for (let bz = T0.z0; bz < T0.z1; bz += 100) {
       const spots = [[bx + 28, bz + 22, PI], [bx + 72, bz + 22, PI], [bx + 28, bz + 78, 0], [bx + 72, bz + 78, 0], [bx + 22, bz + 50, -PI / 2], [bx + 78, bz + 50, PI / 2]];
-      spots.forEach((s) => { if (GR.PL.blocksLot(s[0], s[1], 8, 8)) return; if (GR.SPOTS.some((p) => Math.hypot(p.x - s[0], p.z - s[1]) < 30) || W.pads.some((p) => p.tag && Math.hypot(p.x - s[0], p.z - s[1]) < 26)) return; if (r() < 0.12) return; house(s[0], s[1], s[2], r, statics); });
+      spots.forEach((s) => { if (GR.PL.blocksLot(s[0], s[1], 8, 8)) return; if (GR.SPOTS.some((p) => Math.hypot(p.x - s[0], p.z - s[1]) < 30) || W.pads.some((p) => p.tag && Math.hypot(p.x - s[0], p.z - s[1]) < 26)) return; if (r() < 0.12) return; const fx = s[0] + Math.round(Math.sin(s[2])) * 7, fz = s[1] + Math.round(Math.cos(s[2])) * 7; if (W.blocked(fx, fz, 0.6)) return; house(s[0], s[1], s[2], r, statics); });
     }
     // water tower
     const x = -560, z = 560, y = W.height(x, z);
@@ -263,12 +205,20 @@
     const ox = S.x - 22, oz = S.z - 10;
     statics.push(U.paint(U.xf(new T.CylinderGeometry(7, 7, 6, 18), ox, sy + 3, oz), '#f1f5f9')); statics.push(U.paint(U.xf(new T.SphereGeometry(7, 18, 10, 0, PI * 2, 0, PI / 2), ox, sy + 6, oz), '#cbd5e1'));
     statics.push(U.paint(U.xf(new T.BoxGeometry(1.4, 3, 9), ox + 1.5, sy + 9, oz, 0, 0, 0.6), '#475569')); W.addCirc(ox, oz, 7.5, sy + 13, 'obs');
+    landDoor(ox + 7, oz, 1, 0, sy, 'observatory', '🔭', 'Grokmore Observatory', '#6366f1');
     const mx = S.x + 16, mz = S.z + 16; statics.push(U.paint(U.xf(new T.CylinderGeometry(0.4, 1.6, 40, 4), mx, sy + 20, mz), '#ef4444')); statics.push(U.paint(U.xf(new T.SphereGeometry(1, 8, 6), mx, sy + 41, mz), '#ffffff')); W.addCirc(mx, mz, 2, sy + 42, 'mast');
-    const flag = M.sprite('🏔️ PEAK!', { bg: 'rgba(255,255,255,0.9)', color: '#3a1747', wide: 2.6, scale: 7, fs: 0.55, bold: true }); flag.position.set(S.x, sy + 14, S.z); scene.add(flag);
+    { // summit flag: a real pole + 3D flag + a boxed wooden sign (no flat billboard)
+      statics.push(U.paint(U.xf(new T.CylinderGeometry(0.18, 0.24, 12, 8), S.x, sy + 6, S.z), '#e5e7eb')); statics.push(U.paint(U.xf(new T.SphereGeometry(0.4, 10, 8), S.x, sy + 12.2, S.z), '#facc15'));
+      statics.push(U.paint(U.xf(M.ext([['m', 0, 0], ['l', 4.2, 1.1], ['l', 0, 2.4]], 0.12, 0.03, 2), S.x, sy + 9.4, S.z, 0, PI / 2, 0), '#ff4fd8'));
+      statics.push(U.paint(U.xf(M.rbox(5.2, 1.7, 0.4, 0.15), S.x, sy + 2.4, S.z + 0.6), '#8a5a2b')); statics.push(U.paint(U.xf(new T.BoxGeometry(0.25, 1.6, 0.25), S.x - 2.2, sy + 0.8, S.z + 0.6), '#6b4423')); statics.push(U.paint(U.xf(new T.BoxGeometry(0.25, 1.6, 0.25), S.x + 2.2, sy + 0.8, S.z + 0.6), '#6b4423'));
+      const cv = document.createElement('canvas'); cv.width = 512; cv.height = 160; const cx = cv.getContext('2d'); cx.fillStyle = '#fef3c7'; cx.fillRect(0, 0, 512, 160); cx.fillStyle = '#3a1747'; cx.font = 'bold 84px "Trebuchet MS", "Apple Color Emoji", sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('🏔️ PEAK!', 256, 84);
+      const tx = new T.CanvasTexture(cv); tx.anisotropy = 4; const pl = new T.Mesh(new T.PlaneGeometry(4.7, 1.4), new T.MeshLambertMaterial({ map: tx })); pl.position.set(S.x, sy + 2.4, S.z + 0.82); scene.add(pl);
+    }
     // lighthouse
     const lx = 175, lz = 40, ly = W.height(lx, lz);
     for (let i = 0; i < 6; i++) statics.push(U.paint(U.xf(new T.CylinderGeometry(2.6 - i * 0.18 - 0.18, 2.6 - i * 0.18, 3.5, 14), lx, ly + 1.75 + i * 3.5, lz), i % 2 ? '#ffffff' : '#ef4444'));
     statics.push(U.paint(U.xf(new T.CylinderGeometry(1.6, 1.6, 2.4, 10), lx, ly + 22.2, lz), '#fff3a8')); statics.push(U.paint(U.xf(new T.ConeGeometry(2.2, 2.4, 10), lx, ly + 24.6, lz), '#334155')); W.addCirc(lx, lz, 2.8, ly + 26, 'light');
+    landDoor(lx + 2.55, lz, 1, 0, ly, 'lighthouse', '💡', 'Sparkle Lighthouse', '#ef4444', 1.4);
     // marina dock
     const dx = -268, dz = 128; for (let i = 0; i < 6; i++) statics.push(U.paint(U.xf(new T.BoxGeometry(6, 0.4, 3), dx + i * 6, 0.6, dz), '#a0703c'));
     // wind turbines
@@ -278,15 +228,35 @@
       const m = new T.Mesh(U.merge(bl), M.matMatte); m.position.set(p[0], y + 44, p[1] + 1.5); scene.add(m); SC.anim.push((t) => { m.rotation.z = t * 0.9 + i; });
     });
     // airfield: hangars + tower
-    for (let i = 0; i < 3; i++) { const hx = 1225, hz = 420 + i * 70, y = W.height(hx, hz); const hg = new T.CylinderGeometry(14, 14, 30, 16, 1, false, 0, PI); hg.rotateZ(PI / 2); hg.rotateY(PI / 2); statics.push(U.paint(U.xf(hg, hx, y, hz), i === 1 ? '#94a3b8' : '#cbd5e1')); W.addBox(hx - 15, hz - 14, hx + 15, hz + 14, y + 14, 'hangar'); }
-    { const tx = 1215, tz = 330, y = W.height(tx, tz); statics.push(U.paint(U.xf(new T.CylinderGeometry(2.2, 3, 22, 10), tx, y + 11, tz), '#e2e8f0')); statics.push(U.paint(U.xf(new T.CylinderGeometry(5, 4, 4, 10), tx, y + 24, tz), '#38bdf8')); statics.push(U.paint(U.xf(new T.ConeGeometry(5.4, 2, 10), tx, y + 27, tz), '#334155')); W.addCirc(tx, tz, 3.2, y + 28, 'atc'); }
+    for (let i = 0; i < 3; i++) { const hx = 1225, hz = 420 + i * 70, y = W.height(hx, hz); const hg = new T.CylinderGeometry(14, 14, 30, 16, 1, false, 0, PI); hg.rotateZ(PI / 2); hg.rotateY(PI / 2); statics.push(U.paint(U.xf(hg, hx, y, hz), i === 1 ? '#94a3b8' : '#cbd5e1')); W.addBox(hx - 15, hz - 14, hx + 15, hz + 14, y + 14, 'hangar'); statics.push(U.paint(U.xf(new T.CircleGeometry(14, 16, 0, PI), hx - 15.02, y, hz, 0, -PI / 2, 0), '#64748b')); landDoor(hx - 15, hz, -1, 0, y, 'hangar', '🛩️', 'Hangar ' + (i + 1) + ' Workshop', '#0ea5e9', 3.2); }
+    { const tx = 1215, tz = 330, y = W.height(tx, tz); statics.push(U.paint(U.xf(new T.CylinderGeometry(2.2, 3, 22, 10), tx, y + 11, tz), '#e2e8f0')); statics.push(U.paint(U.xf(new T.CylinderGeometry(5, 4, 4, 10), tx, y + 24, tz), '#38bdf8')); statics.push(U.paint(U.xf(new T.ConeGeometry(5.4, 2, 10), tx, y + 27, tz), '#334155')); W.addCirc(tx, tz, 3.2, y + 28, 'atc'); landDoor(tx - 2.7, tz, -1, 0, y, 'tower', '📡', 'Control Tower', '#38bdf8', 1.4); }
     // tundra outpost cabins + igloos
-    [[330, -935], [300, -940], [600, -1000]].forEach((p, i) => { const y = W.height(p[0], p[1]); statics.push(U.paint(U.xf(new T.BoxGeometry(9, 4, 7), p[0], y + 2, p[1]), '#8a5a3b')); const rf = M.ext([['m', -4.5, 0], ['l', 4.5, 0], ['l', 0, 2.6]], 10, 0.1, 2); statics.push(U.paint(U.xf(rf, p[0], y + 4, p[1], 0, PI / 2, 0), '#f8fbff')); W.addBox(p[0] - 4.5, p[1] - 3.5, p[0] + 4.5, p[1] + 3.5, y + 6.6, 'cabin'); });
-    [[450, -1230], [700, -1260], [820, -1120]].forEach((p) => { const y = W.height(p[0], p[1]); statics.push(U.paint(U.xf(new T.SphereGeometry(4, 12, 8, 0, PI * 2, 0, PI / 2), p[0], y, p[1]), '#f1f8ff')); W.addCirc(p[0], p[1], 4, y + 4, 'igloo'); });
+    [[330, -935], [300, -940], [600, -1000]].forEach((p, i) => { const y = W.height(p[0], p[1]); statics.push(U.paint(U.xf(new T.BoxGeometry(9, 4, 7), p[0], y + 2, p[1]), '#8a5a3b')); const rf = M.ext([['m', -4.5, 0], ['l', 4.5, 0], ['l', 0, 2.6]], 10, 0.1, 2); statics.push(U.paint(U.xf(rf, p[0], y + 4, p[1], 0, PI / 2, 0), '#f8fbff')); W.addBox(p[0] - 4.5, p[1] - 3.5, p[0] + 4.5, p[1] + 3.5, y + 6.6, 'cabin'); landDoor(p[0], p[1] + 3.5, 0, 1, y, 'cabin', '🛖', ['Snowy Cabin', 'Explorer Cabin', 'Husky Cabin'][i], '#b45309', 1.5); });
+    [[450, -1230], [700, -1260], [820, -1120]].forEach((p, i) => { const y = W.height(p[0], p[1]); statics.push(U.paint(U.xf(new T.SphereGeometry(4, 14, 8, 0, PI * 2, 0, PI / 2), p[0], y, p[1]), '#f1f8ff')); statics.push(U.paint(U.xf(new T.CylinderGeometry(1.7, 1.7, 2.6, 12, 1, false, 0, PI), p[0], y, p[1] + 4.2, PI / 2, 0, 0), '#e6f2ff')); W.addCirc(p[0], p[1], 4, y + 4, 'igloo'); W.addBox(p[0] - 1.8, p[1] + 3, p[0] + 1.8, p[1] + 5.4, y + 2, 'igloo'); landDoor(p[0], p[1] + 5.45, 0, 1, y, 'igloo', '🧊', ['Penguin Igloo', 'Frosty Igloo', 'Polar Igloo'][i], '#0ea5e9', 1.4); });
     // giant cactus statue + dino at the desert museum
     { const x = 700, z = 1060, y = W.height(x, z); statics.push(U.paint(U.xf(new T.SphereGeometry(6, 14, 10), x, y + 7, z, 0, 0, 0, 1.6, 1, 1), '#4ade80')); statics.push(U.paint(U.xf(new T.CylinderGeometry(1.6, 2.4, 14, 10), x + 8, y + 12, z, 0, 0, -0.6), '#4ade80')); statics.push(U.paint(U.xf(new T.SphereGeometry(3, 12, 8), x + 13, y + 19, z), '#4ade80')); for (const s of [-1, 1]) statics.push(U.paint(U.xf(new T.CylinderGeometry(1, 1, 6, 8), x + s * 3, y + 3, z), '#3fae6c')); W.addCirc(x, z, 9, y + 20, 'dino'); }
   }
 
+  // a real door (glowing frame + sign) on a landmark, leading into a generated interior
+  function landDoor(x, z, nx, nz, y, variant, icon, name, acc, w) {
+    GR.BLD.door(x, z, nx, nz, y, w && w < 2 ? null : icon + ' ' + name.toUpperCase(), acc, w || 2.2);
+    GR.BLD.addDoorPt(x + nx * 1.6, z + nz * 1.6);
+    GR.BLD.register({ variant, icon, name, short: name.toUpperCase(), x: x - nx * 3, z: z - nz * 3, dx: nx, dz: nz, door: { x: x + nx * 1.6, z: z + nz * 1.6 }, region: W.region(x, z), acc });
+  }
+  // stunt ramps: yellow/black kicker with chevrons + a landing strip
+  function buildRamps(statics) {
+    W.ramps.forEach((r) => {
+      const n = 10, L = r.L, Wd = r.W, pos = [], col = [], c1 = new T.Color('#facc15'), c2 = new T.Color('#1f2937'), cs = new T.Color('#9ca3af');
+      const pt = (u, s, up) => { const h = up ? r.H * Math.pow(u / L, 1.6) : 0, lx = s, lz = u - L / 2; return [r.x + r.fz * lx + r.fx * lz, r.y + h + (up ? 0.05 : -0.4), r.z - r.fx * lx + r.fz * lz]; };
+      const tri = (a, b, c, k) => { [a, b, c].forEach((p) => { pos.push(p[0], p[1], p[2]); col.push(k.r, k.g, k.b); }); };
+      for (let i = 0; i < n; i++) { const u0 = L * i / n, u1 = L * (i + 1) / n, k = i % 2 ? c1 : c2; const a = pt(u0, -Wd / 2, 1), b = pt(u0, Wd / 2, 1), c = pt(u1, Wd / 2, 1), d = pt(u1, -Wd / 2, 1); tri(a, c, b, k); tri(a, d, c, k);
+        const a2 = pt(u0, -Wd / 2, 0), d2 = pt(u1, -Wd / 2, 0); tri(a2, d, a, cs); tri(a2, d2, d, cs); const b2 = pt(u0, Wd / 2, 0), c2b = pt(u1, Wd / 2, 0); tri(b2, b, c, cs); tri(b2, c, c2b, cs); }
+      const e0 = pt(L, -Wd / 2, 0), e1 = pt(L, Wd / 2, 0), e2 = pt(L, Wd / 2, 1), e3 = pt(L, -Wd / 2, 1); tri(e0, e2, e1, cs); tri(e0, e3, e2, cs);
+      const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new T.Float32BufferAttribute(col, 3)); g.computeVertexNormals(); statics.push(g);
+      // flags at the lip
+      [-1, 1].forEach((sd) => { const p = pt(L, sd * (Wd / 2 + 0.4), 0); statics.push(U.paint(U.xf(new T.CylinderGeometry(0.06, 0.06, 4, 5), p[0], p[1] + 2, p[2]), '#e5e7eb')); statics.push(U.paint(U.xf(new T.BoxGeometry(0.05, 0.7, 1.1), p[0], p[1] + 3.6, p[2] + 0.5), '#ff4fd8')); });
+    });
+  }
   function instanced(geo, list, scene) {
     const im = new T.InstancedMesh(geo, M.matMatte, list.length), m4 = new T.Matrix4(), q = new T.Quaternion(), e = new T.Euler(), v = new T.Vector3(), s = new T.Vector3();
     list.forEach((p, i) => { q.setFromEuler(e.set(0, p[3], 0)); v.set(p[0], p[1], p[2]); s.set(p[4], p[4], p[4]); m4.compose(v, q, s); im.setMatrixAt(i, m4); });
@@ -312,6 +282,8 @@
       if (W.ellQ(W.LAKE, x, z) < 1.3 || W.ellQ(W.ICE, x, z) < 1.15) return false;
       if (GR.SPOTS.some((s) => Math.hypot(s.x - x, s.z - z) < 24)) return false;
       if (W.blocked(x, z, rad + 2)) return false;
+      if (W.ramps.some((q) => Math.hypot(q.x + q.fx * 20 - x, q.z + q.fz * 20 - z) < 45)) return false;
+      if (GR.PL.nearDoor(x, z, 7)) return false;
       return true;
     }
     for (let i = 0; i < 9000; i++) {
@@ -330,7 +302,7 @@
     // town street trees
     for (let x = W.TOWN.x0 + 10; x < W.TOWN.x1; x += 25) for (let z = W.TOWN.z0 + 50; z < W.TOWN.z1; z += 100) { const xx = x + 3, zz = z + (r() < 0.5 ? -40 : 40); if (ok(xx, zz, 1.2)) { L.round.push([xx, W.height(xx, zz) - 0.2, zz, r() * 6, 0.9]); W.addCirc(xx, zz, 0.7, 8, 'tree'); } }
     SC.treeCounts = {};
-    for (const k in L) { SC.treeCounts[k] = L[k].length; if (L[k].length) instanced({ round: roundG, pine: pineG, snow: snowG, cactus: cactusG, rock: rockG, red: redRockG }[k], L[k], scene); }
+    for (const k in L) { SC.treeCounts[k] = L[k].length; if (L[k].length) { const im = instanced({ round: roundG, pine: pineG, snow: snowG, cactus: cactusG, rock: rockG, red: redRockG }[k], L[k], scene); GR.QTHIN = GR.QTHIN || []; GR.QTHIN.push(im); } }
   }
 
   // ---- markers ----
@@ -341,7 +313,7 @@
   SC.ringTex = null;
   SC.marker = function (x, z, color, icon, label, r) {
     SC.ringTex = SC.ringTex || ringTex();
-    const G = new T.Group(), y = W.height(x, z);
+    const G = new T.Group(), y = W.gy(x, z);
     const ring = new T.Mesh(new T.CylinderGeometry(r || 7, r || 7, 3, 32, 1, true), new T.MeshBasicMaterial({ color, map: SC.ringTex, transparent: true, side: T.DoubleSide, depthWrite: false, blending: T.AdditiveBlending }));
     ring.position.y = 1.5; G.add(ring);
     const disc = new T.Mesh(new T.CircleGeometry(r || 7, 32).rotateX(-PI / 2), new T.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, depthWrite: false })); disc.position.y = 0.35; G.add(disc);

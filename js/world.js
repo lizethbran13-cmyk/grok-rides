@@ -104,10 +104,29 @@
       const d = RW[idx]; RD[idx] = d;
       if (d < 26) { const w = d <= 4 ? 1 : U.smooth(26, 4, d); H[idx] = U.lerp(H[idx], RH[idx], w); }
     }
+    placeRamps();
     // flatten pads (markers / landmarks)
     W.pads.forEach((pd) => flatten(pd.x, pd.z, pd.r || 16));
+    W.ramps.forEach((r) => { r.y = W.height(r.x, r.z); });
   };
   function sampleRaw(x, z) { return baseH(x, z); }
+  // kicker ramps beside the highway + in the desert / tundra: run-up and landing zones must be open and flat-ish
+  function placeRamps() {
+    W.ramps = []; const hw = roads[0], want = [180, 520, 900, 1300, 1750, 2150, 2600, 3050, 3400, 3800];
+    want.forEach((s0, i) => {
+      for (let k = 0; k < 14; k++) {
+        const s = (s0 + k * 23) % hw.pi.len, p = U.pathAt(hw.pi, s), side = (i % 2 ? 1 : -1), off = hw.hw + 14 + (k % 3) * 4;
+        const x = p.x - p.dz * off * side, z = p.z + p.dx * off * side, fx = p.dx, fz = p.dz;
+        if (W.inRect(W.CITY, x, z, 40) || W.inRect(W.TOWN, x, z, 40) || W.inRect(W.AIR, x, z, 60) || ellQ(W.LAKE, x, z) < 1.6 || ellQ(W.ICE, x, z) < 1.3) continue;
+        let ok = true, h0 = W.height(x, z);
+        for (let u = -40; u <= 60 && ok; u += 5) for (let v = -6; v <= 6; v += 6) { const qx = x + fx * u - fz * v, qz = z + fz * u + fx * v; if (Math.abs(W.height(qx, qz) - h0 - (u > 0 ? 0 : 0)) > 3.5 || W.roadD(qx, qz) < 1 + (u > 8 ? 0 : 3)) ok = false; }
+        if (!ok) continue;
+        W.ramps.push({ id: 'r' + i, x, z, fx, fz, yaw: Math.atan2(fx, fz), L: 9, W: 5.5, H: 3.1 });
+        W.pads.push({ x, z, r: 9 }); W.pads.push({ x: x + fx * 30, z: z + fz * 30, r: 12 });
+        break;
+      }
+    });
+  }
   function flatten(x, z, r) {
     const h = W.height(x, z), R = r + 14;
     for (let i = Math.max(0, Math.floor((z - R + HALF) / RES)); i <= Math.min(N - 1, Math.ceil((z + R + HALF) / RES)); i++)
@@ -127,7 +146,40 @@
   W.roadD = (x, z) => bil(RD, x, z);
   // the road mesh sits ROAD_LIFT above the terrain; wheels/feet use this so they sit ON the asphalt, not sunk into it
   W.ROAD_LIFT = 0.22;
-  W.gy = (x, z) => { const h = bil(H, x, z), d = bil(RD, x, z); return d >= 0.6 ? h : h + W.ROAD_LIFT * U.smooth(0.6, 0, d); };
+  // raised sidewalks (city blocks are paved kerb-to-kerb, town blocks get a 4.5 m sidewalk ring round the lawns)
+  W.SIDE_H = 0.4; W.SIDE_W = 4.5;
+  function gridSide(x, z, R, hwHi) {
+    if (x <= R.x0 || x >= R.x1 || z <= R.z0 || z >= R.z1) return null;
+    const fx = (x - R.x0) % 100, fz = (z - R.z0) % 100;
+    const hx0 = 7, hx1 = (hwHi && x > R.x1 - 100) ? 8 : 7, hz0 = 7, hz1 = 7;
+    const dx = Math.min(fx - hx0, 100 - hx1 - fx), dz = Math.min(fz - hz0, 100 - hz1 - fz);
+    return Math.min(dx, dz); // distance inside the kerb (negative = on the road)
+  }
+  W.sideH = function (x, z) {
+    let e = gridSide(x, z, W.CITY, true);
+    if (e != null) return e <= 0 ? 0 : W.SIDE_H * U.smooth(0, 0.18, e);
+    if (x > W.TOWN.x0 && x < W.TOWN.x1 && z > W.TOWN.z0 && z < W.TOWN.z1) {
+      const xl = W.TOWN.x0 + Math.floor((x - W.TOWN.x0) / 100) * 100, zl = W.TOWN.z0 + Math.floor((z - W.TOWN.z0) / 100) * 100;
+      const hl = xl === -450 ? 8 : 7, hr = xl + 100 === -450 ? 8 : 7;
+      const d = Math.min(x - xl - hl, xl + 100 - hr - x, z - zl - 7, zl + 93 - z);
+      if (d <= 0 || d >= W.SIDE_W + 0.2) return 0;
+      return 0.36 * U.smooth(0, 0.18, d) * U.smooth(W.SIDE_W + 0.2, W.SIDE_W, d);
+    }
+    return 0;
+  };
+  // stunt ramps (filled in by W.build): height of a kicker ramp under x,z
+  W.ramps = [];
+  W.rampH = function (x, z) {
+    for (let i = 0; i < W.ramps.length; i++) {
+      const r = W.ramps[i], dx = x - r.x, dz = z - r.z; if (dx * dx + dz * dz > 100) continue;
+      const u = dx * r.fx + dz * r.fz + r.L / 2, s = Math.abs(dx * r.fz - dz * r.fx);
+      if (u > 0 && u < r.L && s < r.W / 2) return r.H * Math.pow(u / r.L, 1.6) * U.smooth(r.W / 2, r.W / 2 - 0.3, s);
+    }
+    return 0;
+  };
+  // physics ground (terrain + road surface + ramps), without the little kerb step
+  W.gyBase = (x, z) => { const h = bil(H, x, z), d = bil(RD, x, z); return (d >= 0.6 ? h : h + W.ROAD_LIFT * U.smooth(0.6, 0, d)) + (W.ramps.length ? W.rampH(x, z) : 0); };
+  W.gy = (x, z) => W.gyBase(x, z) + W.sideH(x, z);
   W.normal = function (x, z, out) { const e = 2, hx = W.height(x + e, z) - W.height(x - e, z), hz = W.height(x, z + e) - W.height(x, z - e); out = out || {}; const l = Math.hypot(hx, 2 * e, hz); out.x = -hx / l; out.y = 2 * e / l; out.z = -hz / l; return out; };
   W.inRect = (r, x, z, m) => x > r.x0 - (m || 0) && x < r.x1 + (m || 0) && z > r.z0 - (m || 0) && z < r.z1 + (m || 0);
 
