@@ -125,6 +125,9 @@
   }
   W.height = (x, z) => bil(H, x, z);
   W.roadD = (x, z) => bil(RD, x, z);
+  // the road mesh sits ROAD_LIFT above the terrain; wheels/feet use this so they sit ON the asphalt, not sunk into it
+  W.ROAD_LIFT = 0.22;
+  W.gy = (x, z) => { const h = bil(H, x, z), d = bil(RD, x, z); return d >= 0.6 ? h : h + W.ROAD_LIFT * U.smooth(0.6, 0, d); };
   W.normal = function (x, z, out) { const e = 2, hx = W.height(x + e, z) - W.height(x - e, z), hz = W.height(x, z + e) - W.height(x, z - e); out = out || {}; const l = Math.hypot(hx, 2 * e, hz); out.x = -hx / l; out.y = 2 * e / l; out.z = -hz / l; return out; };
   W.inRect = (r, x, z, m) => x > r.x0 - (m || 0) && x < r.x1 + (m || 0) && z > r.z0 - (m || 0) && z < r.z1 + (m || 0);
 

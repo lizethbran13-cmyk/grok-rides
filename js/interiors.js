@@ -471,7 +471,7 @@
   const Foot = GR.Foot = { active: false, inside: null, x: 0, y: 0, z: 0, yaw: 0, spd: 0, dance: 0, camYaw: 0 };
   let me = null; // Person model
   const G_ = () => GR.G;
-  function body() { if (!me) { const G = G_(); me = GR.Person({ shirt: G.myColor(), hat: G.save.hat || null }); } return me; }
+  function body() { if (!me) { const G = G_(); me = GR.Person({ shirt: G.myColor(), hat: G.save.hat || null }); me.traverse((o) => { if (o.isMesh) o.castShadow = true; }); } return me; }
   Foot.model = () => me;
   Foot.setHat = (h) => { if (me) GR.Person.setHat(me, h); GR.Net && GR.Net.sendNow && GR.Net.sendNow(); };
   Foot.canGetOut = function () {
@@ -488,7 +488,7 @@
   };
   Foot.getOut = function () {
     const G = G_(), v = G.me, s = Foot.canGetOut(); if (!s) { UI().toast(v.kind === 'boat' ? '🚤 Park next to the shore to get out.' : GR.isAir(v.type) ? 'Land first, then you can get out!' : 'Stop first, then you can get out!', true); return false; }
-    v.vx = v.vz = v.vy = v.vF = 0; Foot.active = true; G.foot = true; Foot.inside = null; Foot.x = s.x; Foot.z = s.z; Foot.y = W.height(s.x, s.z); Foot.yaw = Math.atan2(s.x - v.x, s.z - v.z); Foot.camYaw = v.yaw; Foot.spd = 0;
+    v.vx = v.vz = v.vy = v.vF = 0; Foot.active = true; G.foot = true; Foot.inside = null; Foot.x = s.x; Foot.z = s.z; Foot.y = W.gy(s.x, s.z); Foot.yaw = Math.atan2(s.x - v.x, s.z - v.z); Foot.camYaw = v.yaw; Foot.spd = 0;
     const m = body(); GR.Person.setHat(m, G.save.hat || null); G.scene.add(m); place(); document.body.classList.add('onfoot'); UI().setControlMode('foot'); G.camSnap = true; GR.Snd.fx('ui'); GR.Net.sendNow && GR.Net.sendNow();
     if (!G.save.footTut) { G.save.footTut = 1; UI().toast('🚶 Walk with the joystick. Glowing green doors = places you can go inside!'); }
     return true;
@@ -515,7 +515,7 @@
   };
   Foot.leave = function (quiet) {
     const G = G_(), p = Foot.inside; if (!p) return; Foot.inside = null; G.inside = null; G.scene.add(body());
-    Foot.x = p.door.x + p.dx * 0.8; Foot.z = p.door.z + p.dz * 0.8; Foot.y = W.height(Foot.x, Foot.z); Foot.yaw = p.yaw; Foot.camYaw = p.yaw; place();
+    Foot.x = p.door.x + p.dx * 0.8; Foot.z = p.door.z + p.dz * 0.8; Foot.y = W.gy(Foot.x, Foot.z); Foot.yaw = p.yaw; Foot.camYaw = p.yaw; place();
     document.body.classList.remove('inside'); $('regionN').textContent = W.REGION_NAMES[W.region(Foot.x, Foot.z)]; G.camSnap = true; if (!quiet) GR.Snd.fx('ui'); GR.Net.sendNow && GR.Net.sendNow();
   };
   function place() { const m = body(); m.position.set(Foot.x, Foot.y, Foot.z); m.rotation.y = Foot.yaw; }
@@ -556,9 +556,9 @@
       // walking out through the door = exit
       if (Foot.z > b.D / 2 - 0.45 && Math.abs(Foot.x) < 1.1 && Foot.spd > 0.5 && Math.cos(Foot.yaw) > 0.5) Foot.leave();
     } else {
-      const ok = (x, z) => !W.blocked(x, z, 0.3) && W.waterDepth(x, z) < 0.7 && Math.abs(x) < 1480 && Math.abs(z) < 1480 && W.height(x, z) - Foot.y < 1.2;
+      const ok = (x, z) => !W.blocked(x, z, 0.3) && W.waterDepth(x, z) < 0.7 && Math.abs(x) < 1480 && Math.abs(z) < 1480 && W.gy(x, z) - Foot.y < 1.2;
       if (ok(Foot.x + sx, Foot.z)) Foot.x += sx; if (ok(Foot.x, Foot.z + sz)) Foot.z += sz;
-      Foot.y += (W.height(Foot.x, Foot.z) - Foot.y) * Math.min(1, dt * 12);
+      Foot.y += (W.gy(Foot.x, Foot.z) - Foot.y) * Math.min(1, dt * 12);
     }
     // camera yaw slowly swings behind when walking forward-ish
     if (Foot.spd > 0.5 && my > -0.3) Foot.camYaw += U.ang(Foot.yaw - Foot.camYaw) * Math.min(1, dt * (Foot.inside ? 1.6 : 1.2) * Math.min(1, Math.abs(my) + 0.3));

@@ -39,11 +39,18 @@
   };
 
   function buildSky(scene) {
-    const g = new T.SphereGeometry(2500, 24, 12), c = [], p = g.attributes.position;
-    const top = new T.Color('#4aa3ff'), hor = new T.Color('#cfefff');
-    for (let i = 0; i < p.count; i++) { const y = p.getY(i) / 2500, t = U.clamp(y * 2.2, 0, 1); const col = hor.clone().lerp(top, t); c.push(col.r, col.g, col.b); }
+    const g = new T.SphereGeometry(2500, 48, 24), c = [], p = g.attributes.position;
+    const top = new T.Color('#2f86f0'), mid = new T.Color('#7cc0ff'), hor = new T.Color('#e4f5ff'), sunC = new T.Color('#fff4d6');
+    const sd = new T.Vector3(0.45, 1, 0.3).normalize(), v3 = new T.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i) / 2500, t = U.clamp(y * 2.2, 0, 1); const col = t < 0.35 ? hor.clone().lerp(mid, t / 0.35) : mid.clone().lerp(top, (t - 0.35) / 0.65);
+      v3.set(p.getX(i), p.getY(i), p.getZ(i)).normalize(); const sg = Math.pow(Math.max(0, v3.dot(sd)), 6) * 0.55; col.lerp(sunC, sg); c.push(col.r, col.g, col.b);
+    }
     g.setAttribute('color', new T.Float32BufferAttribute(c, 3));
     const sky = new T.Mesh(g, new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -1; scene.add(sky); SC.sky = sky;
+    // the sun: a soft glowing disc in the sky dome (moves with the camera like the sky)
+    { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'); const gr = x.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,245,1)'); gr.addColorStop(0.18, 'rgba(255,250,225,1)'); gr.addColorStop(0.3, 'rgba(255,236,170,0.45)'); gr.addColorStop(1, 'rgba(255,230,160,0)'); x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+      const sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(cv), fog: false, depthWrite: false, transparent: true })); sp.scale.set(520, 520, 1); sp.position.copy(sd).multiplyScalar(2300); sp.renderOrder = -1; sky.add(sp); }
     // clouds
     const cg = []; const r = U.rng(7);
     for (let i = 0; i < 46; i++) { const x = (r() - 0.5) * 3600, z = (r() - 0.5) * 3600, y = 330 + r() * 120; for (let k = 0; k < 4; k++) cg.push(U.paint(U.xf(new T.IcosahedronGeometry(1, 1), x + (k - 1.5) * 26 + r() * 10, y + r() * 8, z + r() * 20, 0, 0, 0, 30 + r() * 18, 12 + r() * 6, 22 + r() * 10), '#ffffff')); }
@@ -65,13 +72,15 @@
   }
 
   function roadTex(kind) {
-    const c = document.createElement('canvas'); c.width = 64; c.height = 128; const x = c.getContext('2d');
-    x.fillStyle = kind === 'runway' ? '#5d6068' : '#45484f'; x.fillRect(0, 0, 64, 128);
-    for (let i = 0; i < 300; i++) { x.fillStyle = 'rgba(255,255,255,' + (Math.random() * 0.05) + ')'; x.fillRect(Math.random() * 64, Math.random() * 128, 2, 2); }
-    x.fillStyle = '#f2f2f2'; x.fillRect(2, 0, 3, 128); x.fillRect(59, 0, 3, 128);
-    if (kind === 'runway') { x.fillStyle = '#ffffff'; x.fillRect(30, 0, 4, 60); }
-    else { x.fillStyle = '#ffd23f'; x.fillRect(30, 0, 4, 70); }
-    const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 4; return t;
+    const c = document.createElement('canvas'); c.width = 128; c.height = 128; const x = c.getContext('2d');
+    x.fillStyle = kind === 'runway' ? '#5d6068' : '#45484f'; x.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 500; i++) { x.fillStyle = 'rgba(255,255,255,' + (Math.random() * 0.05) + ')'; x.fillRect(Math.random() * 128, Math.random() * 128, 2, 2); }
+    if (kind !== 'plain') {
+      x.fillStyle = '#e9ebee'; x.fillRect(5, 0, 3, 128); x.fillRect(120, 0, 3, 128);
+      if (kind === 'runway') { x.fillStyle = '#ffffff'; x.fillRect(62, 0, 4, 60); }
+      else { x.fillStyle = '#ffd23f'; x.fillRect(62.5, 0, 3, 52); }
+    }
+    const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 8; return t;
   }
   function buildRoads(scene) {
     const mats = { road: new T.MeshLambertMaterial({ map: roadTex('road'), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), runway: new T.MeshLambertMaterial({ map: roadTex('runway'), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }) };
@@ -91,6 +100,46 @@
       byKind[r.kind === 'runway' ? 'runway' : 'road'].push(g.toNonIndexed());
     });
     for (const k in byKind) if (byKind[k].length) { const m = new T.Mesh(U.merge(byKind[k]), mats[k]); scene.add(m); }
+    buildJunctions(scene);
+  }
+  // Where two roads cross, both road meshes overlap at almost the same height -> their lane lines
+  // z-fought and flickered (very visible on iPhone). Cover every crossing with a clean asphalt patch.
+  function buildJunctions(scene) {
+    const R = W.roads.filter((r) => r.kind !== 'runway'), pos = [], uv = [];
+    const segs = (r) => { const p = r.pts, n = p.length, out = []; for (let i = 0; i < (r.closed ? n : n - 1); i++) out.push([p[i], p[(i + 1) % n]]); return out; };
+    const S = R.map(segs), seen = [];
+    for (let a = 0; a < R.length; a++) for (let b = a + 1; b < R.length; b++) {
+      for (const [p1, p2] of S[a]) {
+        const minx = Math.min(p1.x, p2.x) - 1, maxx = Math.max(p1.x, p2.x) + 1, minz = Math.min(p1.z, p2.z) - 1, maxz = Math.max(p1.z, p2.z) + 1;
+        for (const [q1, q2] of S[b]) {
+          if (Math.max(q1.x, q2.x) < minx || Math.min(q1.x, q2.x) > maxx || Math.max(q1.z, q2.z) < minz || Math.min(q1.z, q2.z) > maxz) continue;
+          const rx = p2.x - p1.x, rz = p2.z - p1.z, sx = q2.x - q1.x, sz = q2.z - q1.z, den = rx * sz - rz * sx; if (Math.abs(den) < 1e-6) continue;
+          const t = ((q1.x - p1.x) * sz - (q1.z - p1.z) * sx) / den, u = ((q1.x - p1.x) * rz - (q1.z - p1.z) * rx) / den;
+          if (t < -0.02 || t > 1.02 || u < -0.02 || u > 1.02) continue;
+          const cx = p1.x + rx * t, cz = p1.z + rz * t; if (seen.some((q) => Math.hypot(q[0] - cx, q[1] - cz) < 6)) continue; seen.push([cx, cz]);
+          const la = Math.hypot(rx, rz), lb = Math.hypot(sx, sz), ax = rx / la, az = rz / la, bx = sx / lb, bz = sz / lb, sin = Math.max(0.35, Math.abs(ax * bz - az * bx));
+          const ea = (R[b].hw + 0.3) / sin, eb = (R[a].hw + 0.3) / sin; // extent along road a / road b
+          // stop at a road that ENDS here (T-junction) so we don't wipe the far kerb line
+          const ra = R[a], rb = R[b];
+          const endA = !ra.closed ? Math.min(U.pathNearest(ra.pi, cx, cz, -1).s, ra.pi.len - U.pathNearest(ra.pi, cx, cz, -1).s) : 99;
+          const endB = !rb.closed ? Math.min(U.pathNearest(rb.pi, cx, cz, -1).s, rb.pi.len - U.pathNearest(rb.pi, cx, cz, -1).s) : 99;
+          let a0 = -ea, a1 = ea, b0 = -eb, b1 = eb;
+          if (endA < 3) { const sA = U.pathNearest(ra.pi, cx, cz, -1).s; if (sA < 3) a0 = Math.max(a0, -0.6); else a1 = Math.min(a1, 0.6); }
+          if (endB < 3) { const sB = U.pathNearest(rb.pi, cx, cz, -1).s; if (sB < 3) b0 = Math.max(b0, -0.6); else b1 = Math.min(b1, 0.6); }
+          // keep A's direction pointing "into" road A's existing part
+          const dirA = U.pathAt(ra.pi, U.pathNearest(ra.pi, cx, cz, -1).s); const sgA = dirA.dx * ax + dirA.dz * az < 0 ? -1 : 1;
+          const dirB = U.pathAt(rb.pi, U.pathNearest(rb.pi, cx, cz, -1).s); const sgB = dirB.dx * bx + dirB.dz * bz < 0 ? -1 : 1;
+          const cor = [[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([i, j]) => { const x = cx + ax * sgA * i + bx * sgB * j, z = cz + az * sgA * i + bz * sgB * j; return [x, W.height(x, z) + 0.25, z]; });
+          // make the quad face up
+          const n = (cor[1][0] - cor[0][0]) * (cor[2][2] - cor[0][2]) - (cor[1][2] - cor[0][2]) * (cor[2][0] - cor[0][0]);
+          const tri = n < 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+          tri.forEach((k) => { pos.push(cor[k][0], cor[k][1], cor[k][2]); uv.push(cor[k][0] / 14, cor[k][2] / 14); });
+        }
+      }
+    }
+    if (!pos.length) return;
+    const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
+    const m = new T.Mesh(g, new T.MeshLambertMaterial({ map: roadTex('plain'), polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -12 })); m.renderOrder = 1; scene.add(m); SC.junctions = m; SC.junctionN = pos.length / 18;
   }
 
   function buildWater(scene) {
@@ -103,13 +152,22 @@
 
   // ---- buildings ----
   function winTex(wall, glass, lit) {
-    const c = document.createElement('canvas'); c.width = 128; c.height = 128; const x = c.getContext('2d');
-    x.fillStyle = wall; x.fillRect(0, 0, 128, 128);
-    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
-      const gx = 8 + i * 40, gy = 10 + j * 42, gr = x.createLinearGradient(gx, gy, gx + 30, gy + 26);
-      const on = Math.random() < lit; gr.addColorStop(0, on ? '#fff3c4' : glass); gr.addColorStop(1, on ? '#ffd27a' : '#0d1b33'); x.fillStyle = gr; x.fillRect(gx, gy, 30, 28);
+    // 4 floors x 4 bays per 12 m tile: framed windows with sills, sky reflections and a few lit rooms
+    const c = document.createElement('canvas'); c.width = 256; c.height = 256; const x = c.getContext('2d');
+    x.fillStyle = wall; x.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 900; i++) { x.fillStyle = 'rgba(0,0,0,' + (Math.random() * 0.035) + ')'; x.fillRect(Math.random() * 256, Math.random() * 256, 3, 3); }
+    for (let j = 0; j < 4; j++) { x.fillStyle = 'rgba(0,0,0,0.10)'; x.fillRect(0, j * 64 + 60, 256, 4); x.fillStyle = 'rgba(255,255,255,0.18)'; x.fillRect(0, j * 64 + 58, 256, 2); }
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+      const gx = 9 + i * 64, gy = 10 + j * 64, w = 46, h = 40, on = Math.random() < lit;
+      x.fillStyle = 'rgba(255,255,255,0.55)'; x.fillRect(gx - 3, gy - 3, w + 6, h + 6);
+      const gr = x.createLinearGradient(gx, gy, gx + w, gy + h);
+      if (on) { gr.addColorStop(0, '#fff3c4'); gr.addColorStop(1, '#ffc96b'); } else { gr.addColorStop(0, '#b9dcff'); gr.addColorStop(0.45, glass); gr.addColorStop(1, '#0d1b33'); }
+      x.fillStyle = gr; x.fillRect(gx, gy, w, h);
+      if (!on) { x.fillStyle = 'rgba(255,255,255,0.22)'; x.beginPath(); x.moveTo(gx + 6, gy + h); x.lineTo(gx + 20, gy); x.lineTo(gx + 28, gy); x.lineTo(gx + 14, gy + h); x.fill(); }
+      x.fillStyle = 'rgba(40,40,50,0.55)'; x.fillRect(gx + w / 2 - 1, gy, 2, h);
+      x.fillStyle = 'rgba(255,255,255,0.7)'; x.fillRect(gx - 4, gy + h + 3, w + 8, 4);
     }
-    const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; return t;
+    const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 8; return t;
   }
   function walls(x0, z0, x1, z1, y0, y1, out) {
     const P = out.p, UV = out.uv, Nn = out.n, tile = 12;

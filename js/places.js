@@ -140,13 +140,13 @@
       if (p.kind !== 'showroom' && p.kind !== 'garage') { const aw = addMesh(g, new T.BoxGeometry(p.w * 0.86, 0.22, 2.4), new T.MeshLambertMaterial({ map: stripeTex(p.acc, '#ffffff') }), 0, 4.1 * (p.h > 9 && p.kind !== 'hotel' ? 1 : 0.95), p.d / 2 + 1.1); aw.rotation.x = 0.28; }
       // glowing door frame + mat + hovering ENTER sign
       addMesh(g, new T.BoxGeometry(4.2, 0.12, 2.4), new T.MeshBasicMaterial({ color: 0x4ade80 }), 0, 0.06, p.d / 2 + 1.3);
-      const tag = M.sprite('🚪 ' + p.name, { color: '#ffffff', bg: 'rgba(22,101,52,.85)', wide: 6, scale: 2.2, fs: 0.42, bold: true }); tag.position.set(0, 6.3, p.d / 2 + 1.6); g.add(tag); p.tag = tag;
+      const tag = M.sprite('🚪 ' + p.name, { color: '#ffffff', bg: 'rgba(22,101,52,.85)', wide: 6, scale: 1.5, fs: 0.42, bold: true }); tag.position.set(0, 4.1, p.d / 2 + 3.2); tag.visible = false; g.add(tag); p.tag = tag;
       // step / sidewalk pad
       addMesh(g, new T.BoxGeometry(p.w + 4, 0.25, 6), lam('#d1d5db'), 0, -0.05, p.d / 2 + 3);
       kindProps(p, g);
       scene.add(g); p.group = g;
     });
-    GR.SC.anim.push((t) => { PL.list.forEach((p) => { if (p.tag) p.tag.position.y = 6.3 + Math.sin(t * 2 + p.x) * 0.25; if (p.spin) p.spin.rotation.y = t * 0.6; }); });
+    GR.SC.anim.push((t) => { PL.list.forEach((p) => { if (p.tag) { p.tag.position.y = 4.1 + Math.sin(t * 2 + p.x) * 0.12; const v = GR.G && GR.G.viewVeh && GR.G.viewVeh(); p.tag.visible = !!v && Math.hypot(v.x - p.door.x, v.z - p.door.z) < 20; } if (p.spin) p.spin.rotation.y = t * 0.6; }); });
   };
   function wpos(p, lx, lz) { const c = Math.cos(p.yaw), s = Math.sin(p.yaw); return { x: p.x + lx * c + lz * s, z: p.z - lx * s + lz * c }; }
   function kindProps(p, g) {

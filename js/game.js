@@ -35,12 +35,18 @@
     
     const sc = G.scene = new T.Scene(); sc.background = new T.Color('#bfe6ff'); sc.fog = new T.Fog(0xcfeaff, 260, 1150);
     G.cam = new T.PerspectiveCamera(70, innerWidth / innerHeight, 0.5, 3200); G.cam.position.set(START.x, 60, START.z + 60);
-    sc.add(new T.HemisphereLight(0xdff3ff, 0x6a7a5a, 0.62)); const sun = new T.DirectionalLight(0xfff1dc, 0.62); sun.position.set(0.5, 1, 0.35); sc.add(sun);
+    // lighting: soft sky fill + a warm sun that casts real shadows around you (cars, people) so things sit on the ground
+    sc.add(new T.HemisphereLight(0xd6ecff, 0x7c8a60, 0.58));
+    const sun = G.sun = new T.DirectionalLight(0xfff0d8, 0.88); G.sunDir = new T.Vector3(0.45, 1, 0.3).normalize(); sun.position.copy(G.sunDir).multiplyScalar(90); sc.add(sun); sc.add(sun.target);
+    R.shadowMap.enabled = true; R.shadowMap.type = T.PCFSoftShadowMap; R.shadowMap.autoUpdate = true;
+    sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); const sc2 = sun.shadow.camera; sc2.left = -34; sc2.right = 34; sc2.top = 34; sc2.bottom = -34; sc2.near = 5; sc2.far = 220; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
+    M.initEnv(R);
     window.addEventListener('resize', onResize); onResize();
     $('loading').classList.remove('hidden');
     setTimeout(() => {
       const t0 = performance.now();
-      W.build(); GR.SC.build(sc); W.buildGraph(); GR.FX.init(sc); GR.Traffic.init(sc); UI.initControls(); setupTitle(); setupLook();
+      W.build(); GR.SC.build(sc); W.buildGraph();
+      sc.traverse((o) => { if (o.isMesh && o !== GR.SC.sky && o.material && !o.material.transparent && o.material.type !== 'MeshBasicMaterial' && !o.isInstancedMesh) o.receiveShadow = true; }); GR.FX.init(sc); GR.Traffic.init(sc); UI.initControls(); setupTitle(); setupLook();
       G.buildMs = Math.round(performance.now() - t0); $('loading').classList.add('hidden');
       G.ready = true; requestAnimationFrame(loop);
       const prm = GN.params(); if (prm) { G.fromHub = true; G.color = prm.color; $('nameIn').value = prm.name; if (prm.mode === 'host') GR.Net.host(prm.code); else GR.Net.join(prm.code); }
@@ -67,7 +73,7 @@
     if (!G.me) {
       const s = G.save, p = s.pos;
       makeMe(s.cur);
-      if (p && p.t === s.cur && Math.abs(p.x) < 1440 && Math.abs(p.z) < 1440 && !(GR.VEH[s.cur].kind === 'ground' && W.waterDepth(p.x, p.z) > 0.5)) G.me.place(p.x, p.z, p.yaw);
+      if (p && p.t === s.cur && Math.abs(p.x) < 1440 && Math.abs(p.z) < 1440 && !(GR.VEH[s.cur].kind === 'ground' && W.waterDepth(p.x, p.z) > 0.5) && !W.blocked(p.x, p.z, Math.min(G.me.Wd, 3) / 2 + 0.3)) G.me.place(p.x, p.z, p.yaw);
       else spawnAt({ x: START.x, z: START.z, id: 'start' }, G.me, START.yaw);
     }
     G.camSnap = true;
@@ -82,13 +88,20 @@
   function spawnAt(spot, v, yaw) {
     let x = spot.x, z = spot.z;
     if (v.kind === 'boat') { const sp = (GR.SPOTS.find((q) => q.id === 'marina') || {}).spawn; x = sp.x; z = sp.z; yaw = Math.PI / 2; }
-    else if (yaw == null) { const r = W.nearestRoad(x, z, true); yaw = r.yaw; }
+    else if (yaw == null) {
+      const r = W.nearestRoad(x, z, true); yaw = r.yaw;
+      // never spawn inside a wall / lamp post / tree: hop to the nearest road instead
+      if (v.kind !== 'boat' && (W.blocked(x, z, Math.min(v.Wd, 3) / 2 + 0.4) || W.waterDepth(x, z) > 0.3) && r.d < 200) { x = r.x; z = r.z; }
+    }
+    if (GR.Traffic.clearNear) GR.Traffic.clearNear(x, z, Math.max(10, v.L + 6)); // no bus parked on top of your new ride
     v.place(x, z, yaw || 0); G.camSnap = true;
   }
   G.canSpawnHere = (k, spot) => GR.VEH[k].kind !== 'boat' || (spot && (spot.id === 'g_marina' || spot.id === 'marina'));
   G.switchVehicle = function (type, spot) {
     if (GR.Race.cur) return; G.persist();
-    G.save.cur = type; makeMe(type); spawnAt(spot || { x: G.me.x, z: G.me.z }, G.me); G.persist();
+    const was = { x: G.me.x, z: G.me.z }; // grab the old spot BEFORE the old ride is replaced (it used to drop new rides at 0,0)
+    if (!spot && G.foot && !GR.Foot.inside) { was.x = GR.Foot.x; was.z = GR.Foot.z; }
+    G.save.cur = type; makeMe(type); spawnAt(spot || was, G.me); UI.resetInput(); G.persist();
     if (G.foot) { UI.setControlMode('foot'); if (!GR.Foot.inside && Math.hypot(G.me.x - GR.Foot.x, G.me.z - GR.Foot.z) > 30) UI.toast('🚗 Your ' + GR.VEH[type].name + ' is parked at ' + (spot && spot.name ? spot.name : 'the lot') + '.'); else if (GR.Foot.inside) UI.toast('🚗 Your ' + GR.VEH[type].name + ' is parked right outside!'); }
     if (GR.Jobs.cur && !GR.Jobs.canDo(GR.Jobs.cur.id, G.me)) GR.Jobs.cancel('Job cancelled: this ride can\u2019t do that job.');
     GR.Snd.fx('ui');
@@ -246,11 +259,16 @@
     if (G.debugCam) { const d = G.debugCam; G.cam.position.set(d[0], d[1], d[2]); G.cam.lookAt(d[3], d[4], d[5]); }
     if (GR.SC.sky) GR.SC.sky.position.copy(G.cam.position);
   }
+  // keep the shadow box centred on the player (snapped to texels so shadows don't shimmer)
+  function updateSun() {
+    if (!G.sun) return; const v = G.viewVeh(); if (!v) return; const q = 68 / 1024, x = Math.round(v.x / q) * q, z = Math.round(v.z / q) * q, y = v.y;
+    G.sun.target.position.set(x, y, z); G.sun.position.set(x + G.sunDir.x * 90, y + G.sunDir.y * 90, z + G.sunDir.z * 90);
+  }
 
   // ---------- loop ----------
   let chimT = 0;
   let last = performance.now(), saveT = 0, smokeT = 0, splashT = 0, routeT = 0, perfT = 0, perfN = 0, perfS = 0;
-  const idle = { thr: 0, brk: 0, steer: 0, up: 0, down: 0, fwd: 0 };
+  const parkIn = { thr: 0, brk: 0, steer: 0, up: 0, down: 0, fwd: 0, park: 1 };
   function loop(now) {
     requestAnimationFrame(loop);
     let dt = (now - last) / 1000; last = now; if (!(dt > 0)) dt = 0.016; dt = Math.min(dt, 0.05);
@@ -260,7 +278,7 @@
     GR.FX.update(dt);
     G.renderer.render(G.inside ? G.inside.scene : G.scene, G.cam);
     // adaptive resolution
-    perfS += dt; perfN++; perfT += dt; if (perfT > 3) { const avg = perfS / perfN; if (avg > 0.034 && G.pr > 1) { G.pr = Math.max(1, G.pr - 0.25); G.renderer.setPixelRatio(G.pr); } perfT = perfS = perfN = 0; G.fps = Math.round(1 / avg); }
+    perfS += dt; perfN++; perfT += dt; if (perfT > 3) { const avg = perfS / perfN; if (avg > 0.034 && G.pr > 1) { G.pr = Math.max(1, G.pr - 0.25); G.renderer.setPixelRatio(G.pr); } else if (avg > 0.045 && G.playing && G.renderer.shadowMap.enabled && !G.keepShadows) { G.slowN = (G.slowN || 0) + 1; if (G.slowN >= 2) { G.renderer.shadowMap.enabled = false; G.sun.castShadow = false; G.scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; }); } } perfT = perfS = perfN = 0; G.fps = Math.round(1 / avg); }
   }
   function step(dt) {
     const v = G.me;
@@ -269,11 +287,11 @@
     let bl = false; for (const k in G.buffs) { if (G.buffs[k] > 0) { G.buffs[k] -= dt; bl = true; } }
     v.buff = GR.Race.cur || !bl ? null : { speed: G.buffs.speed > 0, grip: G.buffs.grip > 0, nitro: G.buffs.nitro > 0, snow: G.buffs.snow > 0, off: G.buffs.off > 0 };
     if (G.foot) { GR.Foot.update(dt, UI.isOpen() ? null : (G.autoFoot ? G.autoFoot(dt) : UI.readInput({ kind: 'foot' })), G.t); }
-    let inp = UI.isOpen() || raceFrozen || G.foot ? idle : UI.readInput(v);
-    if (G.foot) inp = v.kind === 'ground' || v.kind === 'boat' || v.kind === 'plane' ? { brk: 1 } : idle;
-    if (UI.isOpen() && v.kind === 'ground') inp = { brk: Math.abs(v.vF) > 0.5 ? 0.6 : 0 };
+    // nobody at the wheel (walking, a menu is open, race countdown): PARK. Before this was {brk:1}, and
+    // brake below 0.5 m/s means REVERSE, so a parked car drove off backwards by itself.
+    let inp = UI.isOpen() || raceFrozen || G.foot ? parkIn : UI.readInput(v);
     if (G.autoInput && !raceFrozen && !G.foot) { const a = G.autoInput(v, dt); if (a) inp = a; }
-    if (raceFrozen) { inp = { brk: 1 }; if (GR.isAir(v.type)) { v.vx = v.vz = v.vy = 0; } }
+    if (raceFrozen) { inp = parkIn; if (GR.isAir(v.type)) { v.vx = v.vz = v.vy = 0; } }
     if (!G.passenger) {
       const x0 = v.x, z0 = v.z;
       if (raceFrozen && GR.isAir(v.type)) v.syncModel(dt); else v.update(dt, inp);
@@ -310,7 +328,7 @@
     // GPS route (roads) for jobs / picks; races use their own path
     routeT -= dt; const tg = G.gpsTarget();
     if (tg && !GR.Race.cur && !GR.isAir(v.type) && v.kind !== 'boat') { const key = Math.round(tg.x) + ',' + Math.round(tg.z); if (key !== G.routeKey || routeT <= 0) { routeT = 1.5; G.routeKey = key; G.route = W.route(v.x, v.z, tg.x, tg.z); } } else G.route = null;
-    updateCam(dt);
+    updateCam(dt); updateSun();
     UI.hud(G, dt);
     const rpm = U.clamp(Math.abs(v.vF) / (v.V.vmax || 40), 0, 1); GR.Snd.engine(G.foot ? 0 : rpm, !G.passenger && !G.foot, v.kind);
     GR.Net.tick(dt);

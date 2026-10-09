@@ -24,7 +24,7 @@
       const gh = this.groundH(x, z); this.y = y != null ? Math.max(y, gh) : gh; this.air = this.y > gh + 0.5; this.thr = 0; this.lift = 0; this.syncModel(0);
     }
     groundH(x, z) {
-      const h = W.height(x, z);
+      const h = W.gy(x, z);
       if (this.kind === 'boat') return Math.max(h, 0.05);
       if (this.kind === 'ground' && h < -0.2 && W.ellQ(W.LAKE, x, z) < 1.3) return h; // drive into the lake bed (splash)
       return h;
@@ -69,7 +69,9 @@
       const vmax = S.vmax * spd * dmgMul * (1 + 0.28 * nit) * this.pace;
       const acc = S.acc * (1 + 0.7 * nit) * (this.ai ? Math.min(1.08, this.pace + 0.06) : 1);
       let thr = inp ? inp.thr || 0 : 0, brk = inp ? inp.brk || 0 : 0;
-      if (nit) thr = 1;
+      const park = !inp || !!inp.park; // nobody driving (walking, menus, countdown): parking brake, never reverse
+      if (park) { thr = 0; brk = 0; }
+      if (nit && !park) thr = 1;
       if (!this.air) {
         if (thr > 0) { if (vF < -0.5) vF += 28 * thr * dt; else vF += acc * thr * Math.max(0, 1 - (vF / vmax) * (vF / vmax)) * dt; }
         if (brk > 0) { if (vF > 0.5) vF -= 32 * brk * dt; else vF = Math.max(vF - 9 * brk * dt, -Math.min(14, vmax * 0.35)); }
@@ -77,7 +79,11 @@
         if (vF > vmax) vF -= (vF - vmax) * 1.2 * dt;
         // slope
         const e = 2, slope = (W.height(this.x + fx * e, this.z + fz * e) - W.height(this.x - fx * e, this.z - fz * e)) / (2 * e);
-        if (this.kind !== 'boat') vF -= 9.8 * U.clamp(slope, -0.6, 0.6) * 0.5 * dt;
+        // parked / coasting to a stop: hold still (no creeping, no rolling away by itself)
+        const hold = thr <= 0 && brk <= 0 && (park || Math.abs(vF) < 0.8) && Math.abs(slope) < 0.55 && this.kind !== 'boat';
+        if (park && !hold) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 30 * dt);
+        if (hold) { vF -= Math.sign(vF) * Math.min(Math.abs(vF), (park ? 30 : 6) * dt); if (Math.abs(vF) < 0.8) vF = 0; }
+        else if (this.kind !== 'boat') vF -= 9.8 * U.clamp(slope, -0.6, 0.6) * 0.5 * dt;
         // steering
         const sIn = inp ? U.clamp(inp.steer || 0, -1, 1) : 0;
         this.st += (sIn - this.st) * Math.min(1, dt * (this.ai ? 10 : 7));
@@ -87,6 +93,7 @@
         if (inp && inp.hand) { gripAcc *= 0.3; yr *= 1.35; vF -= Math.sign(vF) * Math.min(Math.abs(vF), 6 * dt); }
         // lateral friction (grip limited -> slides/drifts when asking too much)
         const red = Math.min(Math.abs(vS), gripAcc * dt); vS -= Math.sign(vS) * red;
+        if (hold && Math.abs(vS) < 0.8) vS = 0;
         this.skid = Math.abs(vS) > 4 && av > 8 ? Math.abs(vS) : 0;
         this.vx = fx * vF + rx * vS; this.vz = fz * vF + rz * vS;
         this.yaw += yr * dt;
@@ -116,7 +123,7 @@
       }
     }
     stepHeli(dt, inp) {
-      const V = this.V, S = this.stats(), gh = W.height(this.x, this.z), ground = Math.max(gh, W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
+      const V = this.V, S = this.stats(), gh = W.gy(this.x, this.z), ground = Math.max(gh, W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
       const up = inp ? (inp.up || 0) - (inp.down || 0) : 0, jy = inp ? (inp.fwd != null ? inp.fwd : (inp.thr || 0) - (inp.brk || 0)) : 0, sIn = inp ? inp.steer || 0 : 0;
       const landed = this.y <= ground + 0.05;
       this.lift += ((up !== 0 ? 1 : this.y > ground + 0.5 ? 1 : 0) - this.lift) * Math.min(1, dt * 2);
@@ -133,16 +140,17 @@
       this.vx = nfx * vF - nfz * vS; this.vz = nfz * vF + nfx * vS; this.vF = vF;
       this.x += this.vx * dt; this.z += this.vz * dt; this.y += this.vy * dt;
       if (this.y > 650) { this.y = 650; this.vy = Math.min(0, this.vy); }
-      const g2 = Math.max(W.height(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
+      const g2 = Math.max(W.gy(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
       if (this.y < g2) { if (this.vy < -9) this.hit((-this.vy - 8) * 0.9, this.x, this.z, true); if (Math.hypot(vF, 0) > 12 && this.y < g2 - 0.5) this.hit(Math.abs(vF) * 0.3, this.x, this.z, true); this.y = g2; this.vy = Math.max(0, this.vy); }
       this.air = this.y > g2 + 0.3; this.tiltF = U.lerp(this.tiltF || 0, -vF / S.vmax * 0.22, dt * 3); this.tiltS = U.lerp(this.tiltS || 0, sIn * 0.18, dt * 3);
       if (this.nitro > 0) { this.nitro -= dt; if (this.nitro <= 0) this.nitroT = 0; } else if (this.nitroT < 1) this.nitroT = Math.min(1, this.nitroT + dt / 8);
     }
     stepPlane(dt, inp) {
       const V = this.V, S = this.stats();
-      const gh = Math.max(W.height(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.05 ? 0 : -99);
+      const gh = Math.max(W.gy(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.05 ? 0 : -99);
       const sIn = inp ? inp.steer || 0 : 0, pIn = inp ? U.clamp((inp.up || 0) - (inp.down || 0) + (inp.fwd || 0), -1, 1) : 0;
       // throttle lever
+      if (inp && inp.park && this.y <= gh + 0.1) { this.thr = 0; this.vF = Math.max(0, this.vF - 20 * dt); }
       if (inp && inp.thr > 0) this.thr = Math.min(1, this.thr + dt * 0.8); if (inp && inp.brk > 0) this.thr = Math.max(0, this.thr - dt * 0.9);
       const dmgMul = this.dmg >= 100 ? 0.6 : 1, nit = this.nitro > 0 ? 1.3 : 1;
       const tv = this.thr * S.vmax * dmgMul * nit;
@@ -165,7 +173,7 @@
       this.vx = fx * v; this.vz = fz * v;
       this.x += this.vx * dt; this.z += this.vz * dt; this.y += this.vy * dt;
       if (this.y > 650) { this.y = 650; this.vy = Math.min(0, this.vy); }
-      const g2 = Math.max(W.height(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.05 ? 0 : -99);
+      const g2 = Math.max(W.gy(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.05 ? 0 : -99);
       if (this.y < g2) {
         const rough = this.vy < -9 || (W.surface(this.x, this.z) === 5) || (this.vy < -5 && v > 40);
         if (rough && this.air) { this.hit(10 + Math.max(0, -this.vy) * 0.8, this.x, this.z, true); this.vF *= 0.4; this.vy = 6; this.y = g2 + 0.5; }
@@ -175,7 +183,7 @@
       if (this.nitro > 0) { this.nitro -= dt; if (this.nitro <= 0) this.nitroT = 0; } else if (this.nitroT < 1) this.nitroT = Math.min(1, this.nitroT + dt / 8);
     }
     stepBalloon(dt, inp) {
-      const V = this.V, gh = Math.max(W.height(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
+      const V = this.V, gh = Math.max(W.gy(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
       const up = inp ? (inp.up || 0) : 0, down = inp ? (inp.down || 0) : 0, jy = inp ? (inp.fwd != null ? inp.fwd : (inp.thr || 0) - (inp.brk || 0)) : 0, sIn = inp ? inp.steer || 0 : 0;
       this.burn = up > 0;
       const vyT = up ? 5 : down ? -5 : (this.y > gh + 1 ? -0.5 : 0); this.vy += (vyT - this.vy) * Math.min(1, dt * 0.9);
@@ -186,7 +194,7 @@
       const wind = landed ? 0 : 1.2; this.vx = fx * v + wind * 0.6; this.vz = fz * v + wind * 0.3;
       this.x += this.vx * dt; this.z += this.vz * dt; this.y += this.vy * dt;
       if (this.y > 500) { this.y = 500; this.vy = Math.min(0, this.vy); }
-      const g2 = Math.max(W.height(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
+      const g2 = Math.max(W.gy(this.x, this.z), W.ellQ(W.LAKE, this.x, this.z) < 1.1 ? 0 : -99);
       if (this.y < g2) { if (this.vy < -6) this.hit(4, this.x, this.z, true); this.y = g2; this.vy = Math.max(0, this.vy); }
       this.air = this.y > g2 + 0.3;
       if (this.nitro > 0) { this.nitro -= dt; if (this.nitro <= 0) this.nitroT = 0; } else if (this.nitroT < 1) this.nitroT = Math.min(1, this.nitroT + dt / 8);

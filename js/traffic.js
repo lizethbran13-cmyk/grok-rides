@@ -18,46 +18,100 @@
     TR.pShirt.frustumCulled = TR.pRest.frustumCulled = false; scene.add(TR.pShirt, TR.pRest);
     for (let i = 0; i < MAXP; i++) TR.peds.push({ on: false });
   };
+  let nextId = 1;
+  const camF = { x: 0, z: 1, ok: false };
+  function inView(x, z, px, pz) { // roughly inside the camera's view cone (so we never pop cars in/out in front of you)
+    const cam = GR.G && GR.G.cam; if (!cam) return false;
+    const dx = x - cam.position.x, dz = z - cam.position.z, d = Math.hypot(dx, dz) || 1;
+    return (dx * camF.x + dz * camF.z) / d > 0.35;
+  }
   function spawnCar(px, pz) {
     for (let tries = 0; tries < 12; tries++) {
       const r = troads[(rnd() * troads.length) | 0], s = rnd() * r.pi.len, p = U.pathAt(r.pi, s);
-      const d = Math.hypot(p.x - px, p.z - pz); if (d < 130 || d > 300) continue;
-      if (TR.cars.some((c) => c.r === r && Math.abs(c.s - s) < 25)) continue;
+      const d = Math.hypot(p.x - px, p.z - pz); if (d < 150 || d > 310) continue;
+      if (d < 280 && inView(p.x, p.z, px, pz)) continue;
+      if (!r.closed && (s < 25 || s > r.pi.len - 25)) continue;
+      if (TR.cars.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 22)) continue;
       const type = TYPES[(rnd() * TYPES.length) | 0], col = type === 'taxi' ? '#ffc61a' : type === 'police' ? '#14213d' : type === 'bus' ? '#ffc61a' : COLS[(rnd() * COLS.length) | 0];
-      const v = new GR.Veh(type, col); v.fixed = true; v.traffic = true; v.r = r; v.s = s; v.dir = rnd() < 0.5 ? 1 : -1; v.cruise = r.name === 'Grok Highway' ? 20 + rnd() * 5 : 11 + rnd() * 4; v.vF = 0; v.stun = 0; v.lane = r.hw * 0.5;
+      const v = new GR.Veh(type, col); v.fixed = true; v.traffic = true; v.id = nextId++; v.r = r; v.s = s; v.dir = rnd() < 0.5 ? 1 : -1;
+      v.cruise = (r.name === 'Grok Highway' ? 20 + rnd() * 5 : 11 + rnd() * 4) * (v.L > 9 ? 0.85 : 1); v.vF = 0; v.stun = 0;
+      v.lane0 = r.hw * 0.5; v.lane = v.lane0; v.laneT = v.lane0; v.ox = v.oz = v.oyaw = 0; v.bT = v.bD = 0; v.waitT = 0; v.passT = 0;
       scene.add(v.model); TR.cars.push(v); placeT(v, 0); return v;
     }
     return null;
   }
+  // a point on the car's lane, s metres along its road
+  const pa = { x: 0, z: 0 }, pb = { x: 0, z: 0 };
+  function lanePt(v, s, out) {
+    // open roads: extrapolate straight past the ends (pathAt clamps there and its direction collapses to 0,
+    // which used to snap long buses/limos onto the centre line for a frame)
+    const pi = v.r.pi; let over = 0; if (!v.r.closed) { if (s > pi.len - 0.05) { over = s - (pi.len - 0.05); s = pi.len - 0.05; } else if (s < 0.05) { over = s - 0.05; s = 0.05; } }
+    const p = U.pathAt(pi, s), fx = p.dx * v.dir, fz = p.dz * v.dir; out.x = p.x + p.dx * over - fz * v.lane; out.z = p.z + p.dz * over + fx * v.lane; return out;
+  }
+  function railPose(v, out) {
+    // front + rear axle both ride the lane, so long buses/limos swing round corners instead of sliding sideways
+    const half = Math.min(v.L * 0.38, 4.5); lanePt(v, v.s + v.dir * half, pa); lanePt(v, v.s - v.dir * half, pb);
+    out.x = (pa.x + pb.x) / 2; out.z = (pa.z + pb.z) / 2; out.yaw = Math.atan2(pa.x - pb.x, pa.z - pb.z); return out;
+  }
+  const rp = { x: 0, z: 0, yaw: 0 };
   function placeT(v, dt) {
-    const p = U.pathAt(v.r.pi, v.s); const fx = p.dx * v.dir, fz = p.dz * v.dir, rx = -fz, rz = fx;
-    const tx = p.x + rx * v.lane, tz = p.z + rz * v.lane, ty = W.height(tx, tz);
-    v.vx = fx * v.vF; v.vz = fz * v.vF;
-    if (v.stun > 0 && dt) { v.stun -= dt; v.x += (tx - v.x) * dt * 0.5; v.z += (tz - v.z) * dt * 0.5; }
-    else { v.x = tx; v.z = tz; }
-    v.y = ty; const yaw = Math.atan2(fx, fz); v.yaw = dt ? v.yaw + U.ang(yaw - v.yaw) * Math.min(1, dt * 8) : yaw; v.syncModel(dt || 0.016);
+    v.lane += U.clamp(v.laneT - v.lane, -2.5 * (dt || 1), 2.5 * (dt || 1));
+    railPose(v, rp);
+    if (dt && v.bT < v.bD) { v.bT = Math.min(v.bD, v.bT + dt); const k = 1 - U.smooth(0, 1, v.bT / v.bD); v.ox = v.ox0 * k; v.oz = v.oz0 * k; v.oyaw = v.oy0 * k; } // eased turn blend
+    const nx = rp.x + v.ox, nz = rp.z + v.oz, yaw = rp.yaw + v.oyaw;
+    v.vx = dt ? (nx - v.x) / dt : Math.sin(yaw) * v.vF; v.vz = dt ? (nz - v.z) / dt : Math.cos(yaw) * v.vF;
+    v.x = nx; v.z = nz; v.yaw = yaw; v.y = W.gy(nx, nz); v.air = false; v.syncModel(dt || 0.016);
   }
   function endTransfer(v) {
-    // reached end of an open road: hop onto a crossing road
+    // reached the end of an open road: turn onto a crossing road, blending smoothly from where we are (no teleport / spin)
+    const old = { x: v.x, z: v.z, yaw: v.yaw };
     const p = U.pathAt(v.r.pi, v.s), cands = [];
     troads.forEach((r) => { if (r === v.r) return; const q = U.pathNearest(r.pi, p.x, p.z, -1); if (q.d < 14) cands.push({ r, s: q.s }); });
-    if (!cands.length) { v.dir *= -1; return; }
-    const c = cands[(rnd() * cands.length) | 0]; v.r = c.r; v.s = c.s;
-    const dirs = []; if (c.r.closed || c.s + 20 < c.r.pi.len) dirs.push(1); if (c.r.closed || c.s > 20) dirs.push(-1); v.dir = dirs[(rnd() * dirs.length) | 0] || 1;
+    if (!cands.length) { v.dir *= -1; }
+    else {
+      const hx = Math.sin(old.yaw), hz = Math.cos(old.yaw), opts = [];
+      cands.forEach((c) => { const q = U.pathAt(c.r.pi, c.s); [1, -1].forEach((d) => { if (!c.r.closed && ((d > 0 && c.s + 25 > c.r.pi.len) || (d < 0 && c.s < 25))) return; if ((q.dx * d) * hx + (q.dz * d) * hz < -0.3) return; opts.push({ r: c.r, s: c.s, d }); }); });
+      if (!opts.length) cands.forEach((c) => opts.push({ r: c.r, s: c.s, d: c.r.closed || c.s + 25 < c.r.pi.len ? 1 : -1 }));
+      const o = opts[(rnd() * opts.length) | 0]; v.r = o.r; v.s = o.s; v.dir = o.d;
+    }
+    v.lane0 = v.r.hw * 0.5; v.lane = v.laneT = v.lane0; v.passT = 0;
+    railPose(v, rp); v.ox = v.ox0 = old.x - rp.x; v.oz = v.oz0 = old.z - rp.z; v.oyaw = v.oy0 = U.ang(old.yaw - rp.yaw); v.bT = 0; v.bD = Math.max(1.7, v.L / 4) * (0.5 + Math.abs(v.oy0) / 3);
   }
+  TR.spawnTest = function (type, r, s, dir) { // test hook: put one car on a given road
+    const v = new GR.Veh(type, '#ffc61a'); v.fixed = true; v.traffic = true; v.id = nextId++; v.r = r; v.s = s; v.dir = dir; v.cruise = 12; v.vF = 0; v.stun = 0;
+    v.lane0 = r.hw * 0.5; v.lane = v.laneT = v.lane0; v.ox = v.oz = v.oyaw = 0; v.bT = v.bD = 0; v.waitT = 0; v.passT = 0; scene.add(v.model); TR.cars.push(v); placeT(v, 0); return v;
+  };
   TR.clear = function () { TR.cars.forEach((c) => c.dispose(scene)); TR.cars.length = 0; TR.peds.forEach((p) => (p.on = false)); };
+  TR.clearNear = function (x, z, r) { for (let i = TR.cars.length - 1; i >= 0; i--) { const c = TR.cars[i]; if (Math.hypot(c.x - x, c.z - z) < r + c.L / 2) { c.dispose(scene); TR.cars.splice(i, 1); } } };
   TR.update = function (dt, me, others, t) {
     const px = me.x, pz = me.z;
     if (!TR.enabled) { if (TR.cars.length) TR.clear(); hidePeds(); return; }
-    // cars
-    for (let i = TR.cars.length - 1; i >= 0; i--) { const c = TR.cars[i]; if (Math.hypot(c.x - px, c.z - pz) > 340) { c.dispose(scene); TR.cars.splice(i, 1); } }
+    const cam = GR.G && GR.G.cam; if (cam) { const e = cam.matrixWorld.elements; const l = Math.hypot(e[8], e[10]) || 1; camF.x = -e[8] / l; camF.z = -e[10] / l; }
+    // cars: only despawn far away / out of view so they never pop out in front of you
+    for (let i = TR.cars.length - 1; i >= 0; i--) { const c = TR.cars[i], d = Math.hypot(c.x - px, c.z - pz); if (d > 460 || (d > 340 && !inView(c.x, c.z, px, pz)) || (c.waitT > 8 && d > 70 && !inView(c.x, c.z, px, pz))) { c.dispose(scene); TR.cars.splice(i, 1); } }
     if (TR.cars.length < MAXC && rnd() < 0.3) spawnCar(px, pz);
     const movers = [me].concat(others || []);
     TR.cars.forEach((c) => {
       // look ahead for obstacles
-      const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw); let block = false;
-      for (const o of movers.concat(TR.cars)) { if (o === c || !o) continue; const dx = o.x - c.x, dz = o.z - c.z, f = dx * fx + dz * fz, s = Math.abs(dx * -fz + dz * fx); if (f > 0 && f < 13 + c.L / 2 && s < 2.6 && Math.abs((o.y || 0) - c.y) < 4) { block = true; break; } }
-      const tgt = block || c.stun > 0 ? 0 : c.cruise; c.vF += U.clamp(tgt - c.vF, -14 * dt, 5 * dt);
+      const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw); let block = null;
+      const chk = (o, isCar) => {
+        if (o === c || !o || block) return; const dx = o.x - c.x, dz = o.z - c.z, f = dx * fx + dz * fz, sd = Math.abs(dx * -fz + dz * fx);
+        if (!(f > 0 && f < 12 + c.L / 2 + (o.L || 4) / 2 && sd < 1.4 + (o.Wd || 2) / 2 + 0.2 && Math.abs((o.y || 0) - c.y) < 4)) return;
+        if (isCar) {
+          const hd = Math.cos(o.yaw - c.yaw);
+          // crossing traffic at a junction: lower id goes first (no gridlock); after a long wait just go
+          if (hd < 0.5 && hd > -0.5 && (o.id > c.id || c.waitT > 4)) return;
+        } else if (c.passT > 0) return;
+        block = o;
+      };
+      for (const o of movers) chk(o, false);
+      for (const o of TR.cars) chk(o, true);
+      if (block) c.waitT += dt; else c.waitT = Math.max(0, c.waitT - dt * 2);
+      // stuck behind a parked player/friend: pull round them in the other lane
+      if (block && movers.indexOf(block) >= 0 && c.waitT > 2.5 && Math.hypot(block.vx || 0, block.vz || 0) < 1) { c.passT = 6; c.laneT = -c.lane0 * 0.9; }
+      if (c.passT > 0) { c.passT -= dt; if (c.passT <= 0) c.laneT = c.lane0; }
+      const tgt = block || c.stun > 0 ? 0 : c.cruise * (c.passT > 0 ? 0.55 : 1) * (c.bT < c.bD ? 0.6 : 1);
+      c.vF += U.clamp(tgt - c.vF, -14 * dt, 5 * dt); if (c.stun > 0) c.stun -= dt;
       c.s += c.dir * c.vF * dt;
       if (!c.r.closed && (c.s < 2 || c.s > c.r.pi.len - 2)) { c.s = U.clamp(c.s, 2, c.r.pi.len - 2); endTransfer(c); }
       placeT(c, dt);
@@ -79,7 +133,7 @@
       if (!p.on && near && rnd() < 0.05) {
         const r = proads[(rnd() * proads.length) | 0], s = rnd() * r.pi.len, a = U.pathAt(r.pi, s), side = rnd() < 0.5 ? 1 : -1, off = r.hw + 3.5;
         const x = a.x - a.dz * off * side, z = a.z + a.dx * off * side, d = Math.hypot(x - px, z - pz);
-        if (d > 50 && d < 200 && !W.blocked(x, z, 0.6)) { Object.assign(p, { on: true, r, s, side, off, dir: rnd() < 0.5 ? 1 : -1, sp: 1.2 + rnd() * 0.6, x, z, y: W.height(x, z), hop: 0, dx: 0, dz: 0, yaw: 0 }); }
+        if (d > 50 && d < 200 && !W.blocked(x, z, 0.6)) { Object.assign(p, { on: true, r, s, side, off, dir: rnd() < 0.5 ? 1 : -1, sp: 1.2 + rnd() * 0.6, x, z, y: W.gy(x, z), hop: 0, dx: 0, dz: 0, yaw: 0 }); }
       }
       if (!p.on) return;
       // dodge vehicles
@@ -94,7 +148,7 @@
         const a = U.pathAt(p.r.pi, p.s), tx = a.x - a.dz * p.off * p.side, tz = a.z + a.dx * p.off * p.side;
         p.x += (tx - p.x) * Math.min(1, dt * 1.5); p.z += (tz - p.z) * Math.min(1, dt * 1.5); p.yaw = Math.atan2(a.dx * p.dir, a.dz * p.dir);
       }
-      p.y = W.height(p.x, p.z);
+      p.y = W.gy(p.x, p.z);
       const bob = p.hop > 0 ? p.hy : Math.abs(Math.sin(t * 7 + i)) * 0.08;
       q.setFromEuler(e.set(0, p.yaw, p.hop > 0 ? 0.3 : 0)); vv.set(p.x, p.y + bob, p.z); m4.compose(vv, q, one);
       TR.pShirt.setMatrixAt(n, m4); TR.pRest.setMatrixAt(n, m4); const c = new T.Color(COLS[i % COLS.length]); TR.pShirt.setColorAt(n, c); n++;

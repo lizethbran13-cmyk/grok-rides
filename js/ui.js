@@ -25,7 +25,10 @@
     const key = type + color; if (thumbs[key]) return thumbs[key];
     try {
       if (!tr) { tr = new T.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); tr.setSize(240, 150); tr.setPixelRatio(1); ts = new T.Scene(); ts.add(new T.HemisphereLight(0xffffff, 0x8888aa, 0.9)); const d = new T.DirectionalLight(0xffffff, 0.8); d.position.set(3, 5, 4); ts.add(d); tc = new T.PerspectiveCamera(30, 240 / 150, 0.1, 200); }
-      const m = GR.M.vehicle(type, color); ts.add(m);
+      const m = GR.M.vehicle(type, color);
+      if (!UI._tm) { UI._tm = GR.M.mat.clone(); UI._tm.envMap = null; UI._tw = GR.M.matWheel.clone(); UI._tw.envMap = null; } // envMap lives in the main GL context
+      m.traverse((o) => { if (o.material === GR.M.mat) o.material = UI._tm; else if (o.material === GR.M.matWheel) o.material = UI._tw; });
+      ts.add(m);
       const box = new T.Box3().setFromObject(m), c = box.getCenter(new T.Vector3()), s = box.getSize(new T.Vector3()), r = Math.max(s.x, s.y, s.z);
       tc.position.set(c.x + r * 1.25, c.y + r * 0.6, c.z + r * 1.55); tc.lookAt(c); tr.render(ts, tc);
       thumbs[key] = tr.domElement.toDataURL(); ts.remove(m); m.userData.body.geometry.dispose();
@@ -75,7 +78,20 @@
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(e.code) >= 0) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => { keys[e.code] = false; });
-    window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; inp._gas = inp._brake = 0; });
+    window.addEventListener('blur', () => UI.resetInput());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) UI.resetInput(); });
+    window.addEventListener('pagehide', () => UI.resetInput());
+    // iOS Safari can swallow a pointerup (notification banner, swipe-up, 3 fingers...): when NO finger is on the
+    // screen any more, nothing can still be held down, so clear the joystick + pedals.
+    window.addEventListener('touchend', (e) => { if (!e.touches || e.touches.length === 0) UI.resetInput(true); }, { passive: true });
+    window.addEventListener('touchcancel', (e) => { if (!e.touches || e.touches.length === 0) UI.resetInput(true); }, { passive: true });
+  };
+  UI.resetInput = function (touchOnly) {
+    if (!touchOnly) for (const k in keys) keys[k] = false;
+    inp._gas = inp._brake = 0; joy.id = null; joy.x = joy.y = 0;
+    const kn = $('joyKnob'); if (kn) kn.style.transform = '';
+    ['bGas', 'bBrake'].forEach((id) => { const e = $(id); if (e) e.classList.remove('on'); });
+    inp.thr = inp.brk = inp.steer = inp.up = inp.down = inp.fwd = inp.hand = 0;
   };
   UI.readInput = function (veh) {
     const k = keys, kind = veh ? veh.kind : 'ground';
@@ -98,6 +114,7 @@
     return inp;
   };
   UI.setControlMode = function (kind) {
+    UI.resetInput(true);
     $('bFoot').innerHTML = kind === 'foot' ? '🚗<small>DRIVE</small>' : '🚶<small>WALK</small>'; $('bFoot').setAttribute('aria-label', kind === 'foot' ? 'Get in' : 'Get out and walk');
     if (kind === 'foot') { $('joyHint').textContent = 'WALK'; return; }
     const air = kind === 'heli' || kind === 'balloon';

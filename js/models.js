@@ -4,7 +4,43 @@
   const GR = window.GR, U = GR.U, T = THREE;
   const M = GR.M = {};
   const PI = Math.PI;
-  M.mat = new T.MeshPhongMaterial({ vertexColors: true, shininess: 70, specular: 0x555555 });
+  // glossy car paint: PBR material + a small baked sky reflection (set up in M.initEnv once the renderer exists)
+  M.mat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.36, metalness: 0.1, envMapIntensity: 0.6 });
+  M.matWheel = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.2, envMapIntensity: 0.6 });
+  M.initEnv = function (renderer) {
+    try {
+      const sc = new T.Scene(), g = new T.SphereGeometry(10, 32, 16), c = [], p = g.attributes.position;
+      const top = new T.Color('#5aa8ff'), hor = new T.Color('#f2f8ff'), gnd = new T.Color('#5d6b55');
+      for (let i = 0; i < p.count; i++) { const y = p.getY(i) / 10; const col = y > 0 ? hor.clone().lerp(top, Math.min(1, y * 1.6)) : hor.clone().lerp(gnd, Math.min(1, -y * 4)); c.push(col.r, col.g, col.b); }
+      g.setAttribute('color', new T.Float32BufferAttribute(c, 3)); sc.add(new T.Mesh(g, new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide })));
+      const sun = new T.Mesh(new T.SphereGeometry(1.4, 12, 8), new T.MeshBasicMaterial({ color: 0xffffff })); sun.position.set(5, 7.5, 3); sc.add(sun);
+      const pm = new T.PMREMGenerator(renderer), rt = pm.fromScene(sc, 0.02); M.env = rt.texture; pm.dispose();
+      M.mat.envMap = M.env; M.matWheel.envMap = M.env; M.mat.needsUpdate = M.matWheel.needsUpdate = true;
+    } catch (e) { /* older GPUs: plain shading is fine */ }
+  };
+  // smooth shading across soft edges (< ~38 deg) but keep crisp creases: makes the low-poly bodies look rounded, not blocky
+  M.autoSmooth = function (g, deg) {
+    const pos = g.attributes.position, n = pos.count, cosT = Math.cos((deg || 38) * PI / 180);
+    g.computeVertexNormals(); const fn = g.attributes.normal.array.slice(); // flat (non-indexed) face normals
+    const key = (i) => Math.round(pos.getX(i) * 500) + ',' + Math.round(pos.getY(i) * 500) + ',' + Math.round(pos.getZ(i) * 500);
+    const groups = new Map(); for (let i = 0; i < n; i++) { const k = key(i); let a = groups.get(k); if (!a) groups.set(k, (a = [])); a.push(i); }
+    const out = g.attributes.normal.array;
+    groups.forEach((a) => { for (const i of a) { let x = 0, y = 0, z = 0; for (const j of a) { const d = fn[i * 3] * fn[j * 3] + fn[i * 3 + 1] * fn[j * 3 + 1] + fn[i * 3 + 2] * fn[j * 3 + 2]; if (d >= cosT) { x += fn[j * 3]; y += fn[j * 3 + 1]; z += fn[j * 3 + 2]; } } const l = Math.hypot(x, y, z) || 1; out[i * 3] = x / l; out[i * 3 + 1] = y / l; out[i * 3 + 2] = z / l; } });
+    g.attributes.normal.needsUpdate = true; return g;
+  };
+  // round the body in plan view (tapered nose/tail corners) and tuck the greenhouse in (tumblehome): no more shoebox cars
+  M.sculpt = function (g, L, W, k) {
+    const pos = g.attributes.position; let y0 = 1e9, y1 = -1e9; for (let i = 0; i < pos.count; i++) { const y = pos.getY(i); if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    const hl = L / 2;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i); if (Math.abs(x) < 0.05) continue;
+      const zn = Math.min(1.15, Math.abs(z) / hl), yn = (y - y0) / Math.max(0.01, y1 - y0);
+      const plan = 1 - k.plan * Math.pow(U.clamp((zn - k.start) / (1 - k.start), 0, 1.2), 2);
+      const tum = 1 - k.tum * U.smooth(0.42, 1, yn) - 0.035 * U.smooth(0.12, 0, yn);
+      pos.setX(i, x * plan * tum);
+    }
+    pos.needsUpdate = true; return g;
+  };
   M.matMatte = new T.MeshLambertMaterial({ vertexColors: true });
   M.glow = new T.MeshBasicMaterial({ vertexColors: true });
 
@@ -33,8 +69,11 @@
   // rounded box via extrude of rounded rect (side profile) -> smooth
   function rbox(w, h, d, r) {
     r = Math.min(r == null ? 0.15 : r, h / 2 - 0.01, d / 2 - 0.01);
-    const x0 = -d / 2, x1 = d / 2, y0 = -h / 2, y1 = h / 2;
-    return ext([['m', x0 + r, y0], ['l', x1 - r, y0], ['q', x1, y0, x1, y0 + r], ['l', x1, y1 - r], ['q', x1, y1, x1 - r, y1], ['l', x0 + r, y1], ['q', x0, y1, x0, y1 - r], ['l', x0, y0 + r], ['q', x0, y0, x0 + r, y0]], w, Math.min(r, w / 4), 4);
+    // the extrude bevel grows the outline by bevelSize, so inset the profile by that much: the box now really is w x h x d
+    // (before, every rounded part came out ~2*bevel too big and swallowed lights, stripes and windows next to it)
+    const bev = Math.min(r, w / 4), sz = Math.min(bev * 0.85, h / 2 - 0.005, d / 2 - 0.005), rr = Math.max(0.002, r - sz);
+    const x0 = -d / 2 + sz, x1 = d / 2 - sz, y0 = -h / 2 + sz, y1 = h / 2 - sz, q = Math.min(rr, (x1 - x0) / 2 - 0.001, (y1 - y0) / 2 - 0.001);
+    return ext([['m', x0 + q, y0], ['l', x1 - q, y0], ['q', x1, y0, x1, y0 + q], ['l', x1, y1 - q], ['q', x1, y1, x1 - q, y1], ['l', x0 + q, y1], ['q', x0, y1, x0, y1 - q], ['l', x0, y0 + q], ['q', x0, y0, x0 + q, y0]], w, bev, 4);
   }
   M.rbox = rbox;
 
@@ -79,19 +118,21 @@
       K.add(ext([['m', cr, belt - 0.05], ['l', cr + rw, roof], ['l', cf - ws, roof], ['l', cf, belt - 0.05]], Wd - 0.3, 0.12, 4), GLASS);
       K.add(ext([['m', cr + rw - 0.04, roof - 0.06], ['l', cf - ws + 0.04, roof - 0.06], ['l', cf - ws + 0.02, roof + 0.05], ['l', cr + rw - 0.02, roof + 0.05]], Wd - 0.26, 0.1, 2), 'paint');
     }
-    // bumpers + lights + grille
-    K.add(rbox(Wd - 0.1, 0.22, 0.25, 0.08), DARK, 0, cl + 0.12, hr - 0.02);
-    K.add(rbox(Wd - 0.1, 0.22, 0.25, 0.08), DARK, 0, cl + 0.12, -hr + 0.02);
-    K.mirror(() => rbox(0.42, 0.14, 0.12, 0.05), HEAD, Wd / 2 - 0.38, nose - 0.12, hr + 0.01);
-    K.mirror(() => rbox(0.4, 0.14, 0.12, 0.05), TAIL, Wd / 2 - 0.36, tail - 0.16, -hr - 0.01);
-    K.add(rbox(Wd * 0.38, 0.14, 0.1, 0.04), '#3a3d45', 0, nose - 0.2, hr + 0.02);
+    // bumpers + lights + grille (the body bevel grows the outline by ~0.14, so these sit that much further out)
+    const bo = 0.14;
+    K.add(rbox(Wd - 0.06, 0.26, 0.3, 0.1), DARK, 0, cl + 0.12, hr + bo - 0.06);
+    K.add(rbox(Wd - 0.06, 0.26, 0.3, 0.1), DARK, 0, cl + 0.12, -hr - bo + 0.06);
+    K.mirror(() => rbox(0.44, 0.16, 0.12, 0.06), HEAD, Wd / 2 - 0.36, nose - 0.13, hr + bo - 0.04);
+    K.mirror(() => rbox(0.42, 0.15, 0.12, 0.06), TAIL, Wd / 2 - 0.34, tail - 0.17, -hr - bo + 0.04);
+    K.add(rbox(Wd * 0.4, 0.15, 0.1, 0.05), '#3a3d45', 0, nose - 0.24, hr + bo - 0.03);
+    K.mirror(() => box(0.03, 0.05, cf - cr + 0.6), CHROME, Wd / 2 + bo - 0.02, belt - 0.03, (cf + cr) / 2); // chrome belt trim
     // mirrors
-    K.mirror(() => rbox(0.16, 0.12, 0.22, 0.05), 'paint', Wd / 2 + 0.06, belt + 0.12, cf - 0.15);
+    K.mirror(() => rbox(0.16, 0.12, 0.22, 0.05), 'paint', Wd / 2 + bo, belt + 0.12, cf - 0.15);
     return K;
   }
   function addWheels(G, pos, r, w) {
     const geo = wheelGeo(r, w); G.userData.wheels = [];
-    pos.forEach((p) => { const m = new T.Mesh(geo, M.mat); m.position.set(p[0], r, p[1]); if (p[0] < 0) m.rotation.y = PI; G.add(m); G.userData.wheels.push(m); m.userData.front = p[1] > 0; });
+    pos.forEach((p) => { const m = new T.Mesh(geo, M.matWheel); m.castShadow = true; m.position.set(p[0], r, p[1]); if (p[0] < 0) m.rotation.y = PI; G.add(m); G.userData.wheels.push(m); m.userData.front = p[1] > 0; });
     G.userData.wheelR = r;
   }
   function std4(L, Wd, r, fo, ro) { const x = Wd / 2 - 0.08; return [[x, L / 2 - fo], [-x, L / 2 - fo], [x, -L / 2 + ro], [-x, -L / 2 + ro]]; }
@@ -211,9 +252,15 @@
   M.vehicle = function (type, color, opt) {
     opt = opt || {};
     const key = type; const G = new T.Group();
-    let r = bodyCache[key]; if (!r) { r = builders[type](); r.base = r.K.build('#ffffff', r.accent); bodyCache[key] = r; }
+    let r = bodyCache[key]; if (!r) {
+      r = builders[type](); r.base = r.K.build('#ffffff', r.accent);
+      const big = type === 'bus' || type === 'bigrig', car = !big && ['heli', 'plane', 'balloon', 'boat', 'snowmobile', 'buggy'].indexOf(type) < 0;
+      if (car) M.sculpt(r.base, r.L, r.W, { plan: 0.16, start: 0.62, tum: type === 'icecream' ? 0.05 : 0.12 });
+      else if (big) M.sculpt(r.base, r.L, r.W, { plan: 0.05, start: 0.85, tum: 0.04 });
+      M.autoSmooth(r.base, 38); bodyCache[key] = r;
+    }
     const geo = r.base.clone(); geo.userData.paint = r.base.userData.paint;
-    const body = new T.Mesh(geo, M.mat); G.add(body); G.userData.body = body; M.repaint(body, color || '#ff4fd8', opt.accent || r.accent);
+    const body = new T.Mesh(geo, M.mat); body.castShadow = true; G.add(body); G.userData.body = body; M.repaint(body, color || '#ff4fd8', opt.accent || r.accent);
     if (r.wp.length) addWheels(G, r.wp, r.wr, r.wW || 0.34);
     else G.userData.wheels = [];
     if (r.rotor) {
