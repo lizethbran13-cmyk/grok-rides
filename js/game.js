@@ -216,11 +216,11 @@
     G.camYawV = G.camSnap ? target : (G.camYawV || target) + U.ang(target - (G.camYawV || target)) * Math.min(1, dt * (air ? 2.5 : 4.5));
     const yaw = G.camYawV + look.off, L = v.L || 4, mode = G.camMode;
     let dist = [6.8 + L * 0.55, 12 + L * 0.8, 0][mode], h = [2.7 + L * 0.17, 5 + L * 0.25, 0][mode];
-    if (air) { dist = dist * 1.25 + (v.kind === 'balloon' ? 12 : 6); h += v.kind === 'balloon' ? 7 : 2; }
+    if (air) { dist = dist * 1.25 + (v.kind === 'balloon' ? 22 : 6); h += v.kind === 'balloon' ? 9 : 2; }
     if (v.type === 'monster') h += 1.5;
     h += look.pitch * dist;
     if (mode === 2) { const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw); const eye = v.kind === 'balloon' ? 2.4 : v.type === 'bigrig' || v.type === 'bus' ? 3.2 : v.type === 'monster' ? 3.3 : v.kind === 'heli' ? 2.3 : 1.45; cp.set(v.x + fx * L * 0.12, v.y + eye, v.z + fz * L * 0.12); la.set(v.x + Math.sin(yaw) * 30, v.y + eye - 1 - look.pitch * 10, v.z + Math.cos(yaw) * 30); }
-    else { cp.set(v.x - Math.sin(yaw) * dist, v.y + h, v.z - Math.cos(yaw) * dist); la.set(v.x + Math.sin(yaw) * 4, v.y + 1.3 + (air ? 1 : 0), v.z + Math.cos(yaw) * 4); }
+    else { cp.set(v.x - Math.sin(yaw) * dist, v.y + h, v.z - Math.cos(yaw) * dist); la.set(v.x + Math.sin(yaw) * 4, v.y + 1.3 + (v.kind === 'balloon' ? 5 : air ? 1 : 0), v.z + Math.cos(yaw) * 4); }
     let gmin = Math.max(W.height(cp.x, cp.z), W.ellQ(W.LAKE, cp.x, cp.z) < 1.2 ? 0 : -99) + 1.2;
     if (mode !== 2) for (let k = 1; k <= 3; k++) { const f = k / 4, gx = U.lerp(cp.x, v.x, f), gz = U.lerp(cp.z, v.z, f), need = W.height(gx, gz) + 1.5, lineY = U.lerp(cp.y, v.y + 1.3, f); if (need > lineY) gmin = Math.max(gmin, cp.y + (need - lineY) / (1 - f)); }
     if (cp.y < gmin) cp.y = Math.min(gmin, v.y + 40);
